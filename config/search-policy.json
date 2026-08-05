@@ -1,0 +1,25 @@
+{
+  "contractVersion": 3,
+  "defaultIndexScope": "open-official-research",
+  "disabledSources": {
+    "linuxtracker_recent": "Repeatedly returned no usable records; keep configured for future re-evaluation.",
+    "nyaa_recent": "Excluded from the default aggregated index because authorization cannot be established at collection level.",
+    "the_pirate_bay": "Excluded from the default aggregated index because authorization cannot be established at collection level.",
+    "igg_games": "Excluded from the default aggregated index because authorization cannot be established at collection level.",
+    "limetorrent": "Excluded from the default aggregated index because authorization cannot be established at collection level.",
+    "skidrow_reloaded": "Excluded from the default aggregated index because authorization cannot be established at collection level.",
+    "yts_official": "Excluded from the default aggregated index because authorization cannot be established at collection level."
+  },
+  "output": {
+    "legacy_shards": false,
+    "group_files": false,
+    "search_v3": {
+      "enabled": true,
+      "doc_shard_bytes": 65536,
+      "token_bucket_prefix_chars": 2,
+      "max_query_tokens": 8,
+      "max_tokens_per_record": 32,
+      "max_postings_per_token": 50000
+    }
+  }
+}

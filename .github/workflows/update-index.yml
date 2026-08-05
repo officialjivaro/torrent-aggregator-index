@@ -1,0 +1,108 @@
+name: Update JTorrent Backend Index
+
+"on":
+  workflow_dispatch:
+  schedule:
+    # Runs at 12:30 AM and 12:30 PM Japan time every day.
+    - cron: "30 0,12 * * *"
+      timezone: "Asia/Tokyo"
+  push:
+    branches:
+      - main
+    paths:
+      - "config/**"
+      - "scripts/**"
+      - "tests/**"
+      - "requirements.txt"
+      - "pyproject.toml"
+      - "Makefile"
+      - ".github/workflows/update-index.yml"
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: false
+
+env:
+  PYTHONUNBUFFERED: "1"
+
+jobs:
+  build:
+    name: Build static JSON backend
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Run tests
+        run: python -m pytest -q
+
+      - name: Build JTorrent JSON files
+        run: python scripts/build_index.py --config config/sources.yml --policy config/search-policy.json
+
+      - name: Ensure Pages serves static files directly
+        run: touch public/.nojekyll
+
+      - name: Validate generated backend files and performance budget
+        run: |
+          python scripts/validate_v3_backend.py \
+            --public-dir public \
+            --minimum-items 30000 \
+            --max-bytes 73400320
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          status = json.loads(Path("public/data/status.json").read_text(encoding="utf-8"))
+          v3 = json.loads(Path("public/data/v3/manifest.json").read_text(encoding="utf-8"))
+          health = json.loads(Path("public/data/source-health.json").read_text(encoding="utf-8"))
+          print(
+              f"Generated {status.get('item_count', 0):,} items with search {status.get('search_contract')}; "
+              f"{status.get('healthy_source_count', 0)} healthy, "
+              f"{status.get('failed_source_count', 0)} failed, "
+              f"{len(health.get('disabled_sources', []))} policy-disabled sources; "
+              f"{len(v3.get('doc_shards', []))} compact document shards"
+          )
+          PY
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v6
+
+      - name: Upload GitHub Pages artifact
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: public
+          include-hidden-files: true
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Deploy artifact
+        id: deployment
+        uses: actions/deploy-pages@v5
