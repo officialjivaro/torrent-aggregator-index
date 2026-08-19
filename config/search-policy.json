@@ -21,5 +21,20 @@
       "max_tokens_per_record": 32,
       "max_postings_per_token": 50000
     }
+  },
+  "governance": {
+    "failClosed": true,
+    "allowedPublicCopyrightStatuses": [
+      "creative-commons",
+      "open-data",
+      "open-source",
+      "public-domain"
+    ],
+    "requirePolicyForUnknownStatus": true,
+    "minimumHealthySources": 8,
+    "maximumFailedSources": 0,
+    "minimumItems": 30000,
+    "maximumArtifactBytes": 73400320,
+    "expectedPolicyDisabledSources": 7
   }
 }

@@ -15,7 +15,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 from jtorrent_backend.builder import build_index  # noqa: E402
 from jtorrent_backend.config import load_config  # noqa: E402
-from jtorrent_backend.search_policy import apply_policy  # noqa: E402
+from jtorrent_backend.search_policy import PolicyError, apply_policy, validate_policy_contract  # noqa: E402
 from jtorrent_backend.search_v3 import build_search_v3  # noqa: E402
 
 DEFAULT_POLICY = ROOT / "config" / "search-policy.json"
@@ -24,20 +24,36 @@ DEFAULT_POLICY = ROOT / "config" / "search-policy.json"
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build the JTorrent static JSON backend")
     parser.add_argument("--config", default="config/sources.yml", help="Path to the source configuration")
-    parser.add_argument("--policy", default=str(DEFAULT_POLICY), help="Path to the public-search policy")
+    parser.add_argument("--policy", default=str(DEFAULT_POLICY), help="Required public-search policy")
     parser.add_argument("--output-dir", default=None, help="Override the configured output directory")
     parser.add_argument("--offline", action="store_true", help="Skip network sources")
     parser.add_argument("--strict", action="store_true", help="Fail on any source fetch error")
     return parser.parse_args()
 
 
+def read_required_policy(path: Path) -> dict:
+    if not path.is_file():
+        raise PolicyError(f"Required search policy was not found: {path}")
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise PolicyError(f"Search policy is invalid JSON: {path}: {exc}") from exc
+    if not isinstance(payload, dict):
+        raise PolicyError("Search policy root must be an object.")
+    return payload
+
 
 def main() -> int:
     args = parse_args()
     source_config = load_config(Path(args.config))
     policy_path = Path(args.policy)
-    policy = json.loads(policy_path.read_text(encoding="utf-8")) if policy_path.exists() else {}
-    effective_config, disabled_records = apply_policy(source_config, policy)
+    try:
+        policy = read_required_policy(policy_path)
+        validate_policy_contract(source_config, policy)
+        effective_config, disabled_records = apply_policy(source_config, policy)
+    except PolicyError as exc:
+        print(f"ERROR: Public-index policy rejected the build:\n{exc}", file=sys.stderr)
+        return 2
 
     settings = effective_config.setdefault("settings", {})
     if args.output_dir:

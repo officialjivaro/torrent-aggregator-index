@@ -1,49 +1,48 @@
 name: Update JTorrent Backend Index
 
-"on":
+on:
   workflow_dispatch:
   schedule:
-    # Runs at 12:30 AM and 12:30 PM Japan time every day.
-    - cron: "30 0,12 * * *"
-      timezone: "Asia/Tokyo"
+    - cron: '30 3 * * *'
+    - cron: '30 15 * * *'
   push:
     branches:
       - main
     paths:
-      - "config/**"
-      - "scripts/**"
-      - "tests/**"
-      - "requirements.txt"
-      - "pyproject.toml"
-      - "Makefile"
-      - ".github/workflows/update-index.yml"
+      - 'config/**'
+      - 'scripts/**'
+      - 'tests/**'
+      - 'requirements.txt'
+      - 'pyproject.toml'
+      - '.github/workflows/update-index.yml'
 
 permissions:
   contents: read
   pages: write
   id-token: write
 
-concurrency:
-  group: github-pages
-  cancel-in-progress: false
-
 env:
-  PYTHONUNBUFFERED: "1"
+  PYTHONUNBUFFERED: '1'
+
+concurrency:
+  group: jtorrent-backend-pages
+  cancel-in-progress: false
 
 jobs:
   build:
     name: Build static JSON backend
     runs-on: ubuntu-latest
-    timeout-minutes: 60
-
+    timeout-minutes: 40
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
-          python-version: "3.13"
+          python-version: '3.13'
           cache: pip
           cache-dependency-path: requirements.txt
 
@@ -54,6 +53,16 @@ jobs:
 
       - name: Run tests
         run: python -m pytest -q
+
+      - name: Compile Python sources
+        run: python -m compileall -q scripts tests
+
+      - name: Audit source registry and fail-closed policy
+        run: >-
+          python scripts/audit_governance.py
+          --config config/sources.yml
+          --policy config/search-policy.json
+          --output artifacts/backend-governance-static.json
 
       - name: Build JTorrent JSON files
         run: python scripts/build_index.py --config config/sources.yml --policy config/search-policy.json
@@ -83,6 +92,29 @@ jobs:
           )
           PY
 
+      - name: Run final backend governance verification
+        run: >-
+          python scripts/verify_final_phase.py
+          --generated-dir public
+          --output artifacts/backend-final-verification.json
+
+      - name: Upload backend governance evidence
+        uses: actions/upload-artifact@v7
+        with:
+          name: backend-governance-${{ github.sha }}
+          path: |
+            artifacts/backend-governance-static.json
+            artifacts/backend-governance-report.json
+            artifacts/backend-final-verification.json
+            public/data/status.json
+            public/data/source-health.json
+            public/data/manifest.json
+            public/data/v3/manifest.json
+            public/data/v2/manifest.json
+            public/data/sources.json
+          if-no-files-found: error
+          retention-days: 30
+
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v6
 
@@ -94,15 +126,12 @@ jobs:
 
   deploy:
     name: Deploy to GitHub Pages
-    needs: build
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-
+    needs: build
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
-
     steps:
       - name: Deploy artifact
         id: deployment
-        uses: actions/deploy-pages@v5
+        uses: actions/deploy-pages@v4

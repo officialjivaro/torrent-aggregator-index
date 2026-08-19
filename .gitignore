@@ -3,6 +3,7 @@ __pycache__/
 .pytest_cache/
 .venv/
 public/
+artifacts/
 *.zip
 **/[Dd]esktop.ini
 **/[Tt]humbs.db
