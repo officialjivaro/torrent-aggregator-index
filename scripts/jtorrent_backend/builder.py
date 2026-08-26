@@ -233,7 +233,7 @@ def build_index(config_path: Path, *, offline: bool = False, strict: bool = Fals
     _add_indexed_counts(source_summaries, counts_by_source)
 
     manifest = {
-        "name": settings.get("name", "JTorrent Backend"),
+        "name": settings.get("name", "JTorrent Torrent Aggregator Index"),
         "generated_at": generated_at,
         "base_url": settings.get("base_url"),
         "custom_domain": settings.get("custom_domain"),

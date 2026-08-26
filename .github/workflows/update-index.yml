@@ -1,4 +1,4 @@
-name: Update JTorrent Backend Index
+name: Update JTorrent Torrent Aggregator Index
 
 on:
   workflow_dispatch:
@@ -25,7 +25,7 @@ env:
   PYTHONUNBUFFERED: '1'
 
 concurrency:
-  group: jtorrent-backend-pages
+  group: jtorrent-aggregator-index-pages
   cancel-in-progress: false
 
 jobs:

@@ -153,8 +153,10 @@ def validate_policy_contract(config: dict[str, Any], policy: dict[str, Any]) -> 
     if not isinstance(settings, dict):
         errors.append("settings must be an object.")
         settings = {}
-    if settings.get("base_url") != "https://officialjivaro.github.io/backend-jtorrent":
-        errors.append("settings.base_url must be the backend-jtorrent GitHub Pages origin.")
+    if settings.get("base_url") != "https://index.jtorrent.net":
+        errors.append("settings.base_url must be the index.jtorrent.net GitHub Pages origin.")
+    if settings.get("custom_domain") != "index.jtorrent.net":
+        errors.append("settings.custom_domain must be index.jtorrent.net.")
     if settings.get("frontend_origin") != "https://www.jtorrent.net":
         errors.append("settings.frontend_origin must be https://www.jtorrent.net.")
 

@@ -1,7 +1,7 @@
 settings:
-  name: JTorrent Backend
-  base_url: https://officialjivaro.github.io/backend-jtorrent
-  custom_domain: null
+  name: JTorrent Torrent Aggregator Index
+  base_url: https://index.jtorrent.net
+  custom_domain: index.jtorrent.net
   output_dir: public
   frontend_origin: https://www.jtorrent.net
   request:

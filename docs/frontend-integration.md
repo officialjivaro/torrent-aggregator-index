@@ -4,7 +4,7 @@ The backend publishes static JSON through GitHub Pages. The frontend must not tr
 
 ## Preferred v3 flow
 
-1. Fetch `https://officialjivaro.github.io/backend-jtorrent/data/status.json`.
+1. Fetch `https://index.jtorrent.net/data/status.json`.
 2. When `search_contract` is `v3`, fetch `data/v3/manifest.json`.
 3. Tokenize with the manifest's `stopwords`, `max_query_tokens`, and `token_bucket_prefix_chars`.
 4. Fetch only the token buckets required by the query.

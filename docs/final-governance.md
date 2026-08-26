@@ -1,7 +1,7 @@
 # JTorrent backend final governance
 
 Date: 2026-08-19
-Repository: `officialjivaro/backend-jtorrent`
+Repository: `officialjivaro/torrent-aggregator-index`
 
 ## Final production contract
 

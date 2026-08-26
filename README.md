@@ -1,6 +1,6 @@
-# JTorrent search backend
+# JTorrent Torrent Aggregator Index
 
-This repository builds the scheduled static search index used by `https://www.jtorrent.net` and publishes it through GitHub Pages at `https://officialjivaro.github.io/backend-jtorrent`.
+This repository builds the scheduled static search index used by `https://www.jtorrent.net` and publishes it through GitHub Pages at `https://index.jtorrent.net`.
 
 The GitHub Actions workflow runs when backend files change, can be started manually, and runs twice per day at 12:30 AM and 12:30 PM Japan time. It fetches the enabled sources from `config/sources.yml`, applies the public-index policy in `config/search-policy.json`, normalizes and deduplicates records, builds the versioned search contract, validates the result, and deploys the `public/` artifact.
 
@@ -93,9 +93,9 @@ python scripts/validate_v3_backend.py \
 ## GitHub Pages deployment
 
 1. Keep **Settings → Pages → Source** set to **GitHub Actions**.
-2. Push backend changes to `main`, or run **Update JTorrent Backend Index** manually.
+2. Push index changes to `main`, or run **Update JTorrent Torrent Aggregator Index** manually.
 3. Wait for both the build and deploy jobs to pass.
-4. Verify `https://officialjivaro.github.io/backend-jtorrent/data/status.json` reports `"search_contract": "v3"` before deploying a frontend that prefers v3.
+4. Verify `https://index.jtorrent.net/data/status.json` reports `"search_contract": "v3"` before deploying a frontend that prefers v3.
 
 The frontend remains backward compatible with the v2 compatibility surface during rollout.
 

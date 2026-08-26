@@ -8,7 +8,8 @@ from jtorrent_backend.search_policy import PolicyError, apply_policy, validate_p
 def config() -> dict:
     return {
         "settings": {
-            "base_url": "https://officialjivaro.github.io/backend-jtorrent",
+            "base_url": "https://index.jtorrent.net",
+            "custom_domain": "index.jtorrent.net",
             "frontend_origin": "https://www.jtorrent.net",
             "limits": {"min_total_items": 30000},
         },

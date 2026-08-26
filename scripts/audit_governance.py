@@ -143,7 +143,7 @@ def main() -> int:
     report = {
         "schema_version": 1,
         "generated_at": args.generated_at or datetime.now(timezone.utc).isoformat(),
-        "repository": "officialjivaro/backend-jtorrent",
+        "repository": "officialjivaro/torrent-aggregator-index",
         "policy": policy_report,
         "generated_backend": generated_report,
         "errors": errors,

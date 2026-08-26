@@ -324,7 +324,7 @@ def _write_public_info_pages(public_dir: Path, status: dict[str, Any], v3_manife
 </html>
 """
     (public_dir / "index.html").write_text(index_html, encoding="utf-8")
-    base_url = "https://officialjivaro.github.io/backend-jtorrent"
+    base_url = "https://index.jtorrent.net"
     sitemap_urls = [
         f"{base_url}/",
         f"{base_url}/data/status.json",

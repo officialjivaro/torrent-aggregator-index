@@ -41,8 +41,8 @@ Common failures include:
 After a successful run, verify:
 
 ```text
-https://officialjivaro.github.io/backend-jtorrent/data/status.json
-https://officialjivaro.github.io/backend-jtorrent/data/v3/manifest.json
+https://index.jtorrent.net/data/status.json
+https://index.jtorrent.net/data/v3/manifest.json
 ```
 
 `status.json` must advertise `search_contract: v3`. Deploy the frontend package only after that endpoint is live.

@@ -585,7 +585,7 @@ def _write_scalable_client_js(output_dir: Path) -> None:
     return docs;
   }
   async function search(options){
-    const baseUrl = options.baseUrl || options.base || 'https://officialjivaro.github.io/backend-jtorrent';
+    const baseUrl = options.baseUrl || options.base || 'https://index.jtorrent.net';
     const query = options.query || '';
     const limit = Math.max(1, Math.min(100, options.limit || 25));
     const mode = options.mode || 'and';
@@ -879,7 +879,7 @@ def write_public(
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>JTorrent Backend</title>
+  <title>JTorrent Torrent Aggregator Index</title>
   <style>
     body {{ font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 2rem; line-height: 1.5; max-width: 980px; }}
     code, pre {{ background: #f4f4f4; padding: .15rem .3rem; border-radius: .25rem; }}
@@ -889,8 +889,8 @@ def write_public(
   </style>
 </head>
 <body>
-  <h1>JTorrent backend</h1>
-  <p>This is the static JSON backend for <strong>{manifest.get('frontend_origin') or 'JTorrent'}</strong>.</p>
+  <h1>JTorrent Torrent Aggregator Index</h1>
+  <p>This is the static, scheduled search index for <strong>{manifest.get('frontend_origin') or 'JTorrent'}</strong>.</p>
   <div class="grid">
     <div class="card"><strong>Items</strong><br>{manifest.get('item_count')}</div>
     <div class="card"><strong>Sources enabled</strong><br>{manifest.get('enabled_source_count')}</div>

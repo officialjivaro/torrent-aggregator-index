@@ -54,7 +54,7 @@ def main() -> int:
         report = {
             "schema_version": 1,
             "generated_at": datetime.now(timezone.utc).isoformat(),
-            "repository": "officialjivaro/backend-jtorrent",
+            "repository": "officialjivaro/torrent-aggregator-index",
             "governance": governance,
             "workflow_controls": required_fragments,
             "passed": True,
