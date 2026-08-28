@@ -144,13 +144,14 @@ def publish_r2(public_dir: Path) -> dict[str, Any]:
     current = read_json(public_dir / "data" / "v4" / "current.json")
     release_id = str(current["release_id"])
     client = r2_client()
-    client.put_bucket_cors(Bucket=bucket, CORSConfiguration={"CORSRules": [{
-        "AllowedMethods": ["GET", "HEAD"],
-        "AllowedOrigins": ["https://www.jtorrent.net", "https://jtorrent.net"],
-        "AllowedHeaders": ["*"],
-        "ExposeHeaders": ["ETag"],
-        "MaxAgeSeconds": 86400,
-    }]})
+    if bool(publishing.get("r2_manage_cors", False)):
+        client.put_bucket_cors(Bucket=bucket, CORSConfiguration={"CORSRules": [{
+            "AllowedMethods": ["GET", "HEAD"],
+            "AllowedOrigins": ["https://www.jtorrent.net", "https://jtorrent.net"],
+            "AllowedHeaders": ["*"],
+            "ExposeHeaders": ["ETag"],
+            "MaxAgeSeconds": 86400,
+        }]})
 
     files = public_files(public_dir)
     planned = {path.relative_to(public_dir).as_posix(): path.stat().st_size for path in files}

@@ -2,6 +2,31 @@
 set -euo pipefail
 cd -- "$(dirname -- "$0")"
 
+credentials_file="${JT_CREDENTIALS_FILE:-$(dirname -- "$PWD")/2_credentials/torrent-aggregator-index.env}"
+if [[ -f "$credentials_file" ]]; then
+  while IFS='=' read -r key value || [[ -n "$key" ]]; do
+    key="${key%$'\r'}"
+    value="${value%$'\r'}"
+    case "$key" in
+      CLOUDFLARE_ACCOUNT_ID|R2_ACCESS_KEY_ID|R2_SECRET_ACCESS_KEY)
+        if [[ -z "${!key:-}" ]]; then
+          export "$key=$value"
+        fi
+        ;;
+    esac
+  done < "$credentials_file"
+fi
+missing_credentials=()
+for key in CLOUDFLARE_ACCOUNT_ID R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY; do
+  if [[ -z "${!key:-}" ]]; then
+    missing_credentials+=("$key")
+  fi
+done
+if ((${#missing_credentials[@]})); then
+  printf 'Missing R2 credentials: %s. Create %s or set JT_CREDENTIALS_FILE.\n' "${missing_credentials[*]}" "$credentials_file" >&2
+  exit 1
+fi
+
 if [[ ! -x .venv/bin/python ]]; then
   python3 -m venv .venv
 fi

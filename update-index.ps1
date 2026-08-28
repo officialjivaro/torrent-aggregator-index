@@ -3,11 +3,51 @@ param(
     [switch]$Offline,
     [switch]$SkipTests,
     [switch]$SkipGitHubBackup,
-    [switch]$SkipR2
+    [switch]$SkipR2,
+    [string]$CredentialFile
 )
 
 $ErrorActionPreference = "Stop"
 Set-Location -LiteralPath $PSScriptRoot
+
+function Import-R2Credentials {
+    param([Parameter(Mandatory)][string]$Path)
+
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return }
+    $allowed = @("CLOUDFLARE_ACCOUNT_ID", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY")
+    foreach ($line in Get-Content -LiteralPath $Path) {
+        $trimmed = $line.Trim()
+        if (-not $trimmed -or $trimmed.StartsWith("#")) { continue }
+        $separator = $trimmed.IndexOf("=")
+        if ($separator -lt 1) { continue }
+        $name = $trimmed.Substring(0, $separator).Trim()
+        if ($name -notin $allowed) { continue }
+        $value = $trimmed.Substring($separator + 1).Trim()
+        if ($value.Length -ge 2 -and (($value.StartsWith('"') -and $value.EndsWith('"')) -or ($value.StartsWith("'") -and $value.EndsWith("'")))) {
+            $value = $value.Substring(1, $value.Length - 2)
+        }
+        if ($value -and -not [Environment]::GetEnvironmentVariable($name, "Process")) {
+            [Environment]::SetEnvironmentVariable($name, $value, "Process")
+        }
+    }
+}
+
+if (-not $SkipR2) {
+    if (-not $CredentialFile) {
+        $CredentialFile = if ($env:JT_CREDENTIALS_FILE) {
+            $env:JT_CREDENTIALS_FILE
+        } else {
+            Join-Path (Split-Path -Parent $PSScriptRoot) "2_credentials\torrent-aggregator-index.env"
+        }
+    }
+    Import-R2Credentials -Path $CredentialFile
+    $missingCredentials = @("CLOUDFLARE_ACCOUNT_ID", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY") | Where-Object {
+        -not [Environment]::GetEnvironmentVariable($_, "Process")
+    }
+    if ($missingCredentials.Count) {
+        throw "Missing R2 credentials: $($missingCredentials -join ', '). Run .\save-r2-credentials.ps1 first or provide -CredentialFile."
+    }
+}
 
 $python = Join-Path $PSScriptRoot ".venv\Scripts\python.exe"
 if (-not (Test-Path -LiteralPath $python)) {

@@ -38,15 +38,15 @@ gh auth status
 gh auth setup-git
 ```
 
-Create an R2 Standard bucket named `jtorrent-aggregator-index`, connect `index.jtorrent.net` as its custom domain, and create an R2 S3 API token with object read/write access to that bucket. Set credentials in the shell that runs the updater:
+Create an R2 Standard bucket named `torrent-aggregator-index`, connect `index.jtorrent.net` as its custom domain, and create an R2 S3 API token with Object Read & Write access restricted to that bucket. Save the one-time Access Key ID and Secret Access Key from Windows without putting them in the repository or command history:
 
 ```powershell
-$env:CLOUDFLARE_ACCOUNT_ID = "your-account-id"
-$env:R2_ACCESS_KEY_ID = "your-r2-access-key-id"
-$env:R2_SECRET_ACCESS_KEY = "your-r2-secret-access-key"
+.\save-r2-credentials.ps1 -AccountId "your-account-id" -IncludeApiToken
 ```
 
-Do not commit credentials. The publisher configures bucket CORS for `https://www.jtorrent.net` and `https://jtorrent.net`.
+The helper prompts for both S3 keys and the optional administrative API token with masked input, then writes `../2_credentials/torrent-aggregator-index.env` with a Windows ACL limited to the current user, SYSTEM, and local administrators. Both updater scripts load the three S3 values automatically; the API token is retained for explicitly authorized Cloudflare administration. Set `JT_CREDENTIALS_FILE` or pass Windows `-CredentialFile` only when the credentials live elsewhere. Do not commit credentials.
+
+The bucket-scoped Object Read & Write token intentionally cannot change bucket configuration. Configure the one-time CORS policy in the R2 dashboard for `GET` and `HEAD` from `https://www.jtorrent.net` and `https://jtorrent.net`. Routine publishers leave `r2_manage_cors: false`, preserving least privilege.
 
 ## Run an update
 

@@ -18,7 +18,8 @@ settings:
     path: state/catalog.sqlite
     soft_limit_bytes: 17179869184
   publishing:
-    r2_bucket: jtorrent-aggregator-index
+    r2_bucket: torrent-aggregator-index
+    r2_manage_cors: false
     r2_soft_limit_bytes: 8589934592
     keep_r2_versions: 3
     github_repository: officialjivaro/torrent-aggregator-index
