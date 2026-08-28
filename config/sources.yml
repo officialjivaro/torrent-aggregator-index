@@ -11,10 +11,19 @@ settings:
     retries: 2
     max_torrent_bytes: 5242880
   limits:
-    max_items_total: 1000000
-    max_items_per_source: 50000
     max_json_file_bytes: 5242880
     min_total_items: 30000
+  state:
+    enabled: true
+    path: state/catalog.sqlite
+    soft_limit_bytes: 17179869184
+  publishing:
+    r2_bucket: jtorrent-aggregator-index
+    r2_soft_limit_bytes: 8589934592
+    keep_r2_versions: 3
+    github_repository: officialjivaro/torrent-aggregator-index
+    github_asset_soft_limit_bytes: 1932735283
+    local_backup_count: 2
   output:
     scalable_search:
       enabled: true
@@ -358,21 +367,24 @@ sources:
   min_items: 5000
 - id: the_pirate_bay
   name: The Pirate Bay
-  type: html_torrent_links
+  type: apibay
   enabled: true
   category: general
   source_homepage: https://thepiratebay.org/
+  api_base_url: https://apibay.org/
   copyright_status: unknown
-  license: User-generated content, check individual torrents.
-  page_urls:
-  - https://thepiratebay.org/top
-  max_depth: 1
-  follow_link_regexes:
-  - /torrent/\d+/.*
-  include_url_regexes:
-  - '^magnet:'
-  - \.torrent(?:$|[?#])
-  collect_magnets: true
+  license: Public third-party listings; verify item-level authorization before use.
+  top_categories:
+  - recent
+  - all
+  - 100
+  - 200
+  - 300
+  - 400
+  - 600
+  expand_uploaders: true
+  uploader_refresh_pages: 3
+  catalog_batch_size: 50
   tags:
   - general
   - movies
@@ -380,9 +392,8 @@ sources:
   - software
   fetch_torrent_metadata: false
   required: false
-  max_items: 5000
   min_items: 0
-  notes: Optional best-effort source; availability and markup can change without notice.
+  notes: Opt-in third-party source collected through the public APIBay JSON interface with resumable uploader expansion.
 - id: igg_games
   name: IGG-Games
   type: html_torrent_links
@@ -460,31 +471,25 @@ sources:
   max_items: 5000
   min_items: 0
   notes: Optional best-effort source; availability and markup can change without notice.
-- id: yts_official
-  name: YTS Official
-  type: html_torrent_links
+- id: yts_meta_search
+  name: YTS-branded Meta Search
+  type: yts_meta_search
   enabled: true
   category: movies
-  source_homepage: https://www.yts-official.cc/
+  source_homepage: https://en.yts-official.com/
   copyright_status: unknown
-  license: Movie torrents, check copyright status per title.
-  page_urls:
-  - https://www.yts-official.cc/browse-movies
-  max_depth: 1
-  follow_link_regexes:
-  - /movie/[-a-z0-9]+\d+
-  include_url_regexes:
-  - \.torrent(?:$|[?#])
-  - '^magnet:'
-  collect_magnets: true
+  license: Meta-search results from third-party providers; verify item-level authorization before use.
+  mode: movie
+  quality: all
+  refresh_days: 30
+  catalog_batch_size: 1
   tags:
   - movies
-  - yify
+  - meta-search
   fetch_torrent_metadata: false
   required: false
-  max_items: 5000
   min_items: 0
-  notes: Optional best-effort source; availability and markup can change without notice.
+  notes: Opt-in third-party meta-search source. Provider provenance returned by the endpoint is preserved on every record.
 manual_items:
 - title: Arch Linux latest ISO torrent
   category: linux

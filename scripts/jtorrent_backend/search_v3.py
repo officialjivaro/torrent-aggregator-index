@@ -109,7 +109,7 @@ def _compact_doc(row: dict[str, Any]) -> dict[str, Any]:
     keys = [
         "doc_id", "title", "source_id", "source_name", "source_url", "details_url",
         "torrent_url", "magnet", "category", "size", "seeders", "leechers",
-        "date_added", "copyright_status", "tags",
+        "date_added", "copyright_status", "policy_scope", "mirrors", "first_seen", "last_seen", "tags",
     ]
     compact = {key: row.get(key) for key in keys if row.get(key) not in [None, "", [], {}]}
     if description:

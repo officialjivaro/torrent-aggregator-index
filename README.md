@@ -1,135 +1,143 @@
 # JTorrent Torrent Aggregator Index
 
-This repository builds the scheduled static search index used by `https://www.jtorrent.net` and publishes it through GitHub Pages at `https://index.jtorrent.net`.
+This repository collects torrent metadata into a persistent local catalog, builds a versioned static search index, saves a GitHub Release backup, and publishes the live copy to Cloudflare R2 at `https://index.jtorrent.net`.
 
-The GitHub Actions workflow runs when backend files change, can be started manually, and runs twice per day at 12:30 AM and 12:30 PM Japan time. It fetches the enabled sources from `config/sources.yml`, applies the public-index policy in `config/search-policy.json`, normalizes and deduplicates records, builds the versioned search contract, validates the result, and deploys the `public/` artifact.
+Routine updates are manual and local. No GitHub Action runs on pushes or on a schedule. The repository workflow is retained as a manually triggered emergency GitHub Pages fallback only.
 
-## Current search architecture
+## Architecture
 
-Search contract **v3** is the preferred frontend interface. It keeps meaningful domain words such as `public`, `domain`, `creative`, `commons`, `archive`, `official`, `torrent`, `download`, and `metadata` searchable.
+1. Structured source adapters collect records and resume from checkpoints in `state/catalog.sqlite`.
+2. The catalog merges duplicate infohashes and preserves source mirrors, first-seen, and last-seen timestamps.
+3. `config/suppressions.yml` removes exact infohashes or URLs before public output is generated.
+4. Search v4 writes one immutable release under `data/v4/releases/<release-id>/`.
+5. `data/v4/current.json` is the small mutable pointer to that release.
+6. Search v3 and v2 remain published as compatibility fallbacks.
+7. Backup ZIP assets are uploaded to a versioned GitHub Release.
+8. R2 receives immutable files first, mutable compatibility files next, and `current.json` last.
 
-The v3 flow is:
+Cloudflare R2 is the serving origin. GitHub Releases and the local catalog/backups are recovery copies; Cloudflare does not need to pull the index from GitHub.
 
-1. Fetch `data/status.json`.
-2. Confirm `search_contract` is `v3`.
-3. Fetch `data/v3/manifest.json`.
-4. Tokenize the query using the manifest's stopword and token settings.
-5. Fetch only the matching token buckets under `data/v3/tokens/`.
-6. Filter postings by category or source before document hydration.
-7. Intersect strict matches, or explicitly label an OR fallback when no strict match exists.
-8. Hydrate only the requested result window from compact shards under `data/v3/docs/`.
+## Search scopes
 
-Each v3 posting is:
+The policy in `config/search-policy.json` is fail closed:
 
-```text
-[doc_id, category_index, source_index, static_score]
+- `open-authorized` is included by default.
+- `third-party-unverified` requires an explicit website opt-in.
+- The Pirate Bay APIBay collector and YTS Meta Search are assigned to the opt-in scope.
+- Nyaa, IGG, LimeTorrent, and Skidrow remain disabled. LinuxTracker remains disabled because it produced no usable records.
+
+The opt-in changes visibility, not an item’s underlying authorization. Users must verify source, rights, and file safety.
+
+## One-time setup
+
+Install Python 3.12 or newer and [GitHub CLI](https://cli.github.com/). From the repository root on Windows, GitHub CLI authentication is:
+
+```powershell
+gh auth login --hostname github.com --git-protocol https --web
+gh auth status
+gh auth setup-git
 ```
 
-A compact v2 compatibility surface remains available during the frontend transition. It reuses the v3 document shards instead of duplicating a second document corpus.
+Create an R2 Standard bucket named `jtorrent-aggregator-index`, connect `index.jtorrent.net` as its custom domain, and create an R2 S3 API token with object read/write access to that bucket. Set credentials in the shell that runs the updater:
 
-## Published endpoints
-
-```text
-/data/status.json                     Small build/search status record
-/data/source-health.json              Source counts, errors, and policy-disabled sources
-/data/manifest.json                   Root build manifest and version pointers
-/data/v3/manifest.json                Preferred search-contract manifest
-/data/v3/tokens/*.json                Scored, filterable token postings
-/data/v3/docs/*.json                  Compact result-document shards
-/data/v2/manifest.json                Compatibility manifest
-/data/v2/tokens/*.json                Compatibility doc-id postings
-/data/search-index*.json              Small version pointers, not duplicate corpora
-/data/sources.json                    Source metadata
+```powershell
+$env:CLOUDFLARE_ACCOUNT_ID = "your-account-id"
+$env:R2_ACCESS_KEY_ID = "your-r2-access-key-id"
+$env:R2_SECRET_ACCESS_KEY = "your-r2-secret-access-key"
 ```
 
-The build no longer publishes duplicate legacy full, compact, search, category, source, and v2 document corpora. CI enforces a 70 MiB uncompressed artifact budget.
+Do not commit credentials. The publisher configures bucket CORS for `https://www.jtorrent.net` and `https://jtorrent.net`.
 
-## Source policy
+## Run an update
 
-`config/sources.yml` remains the complete configured source registry. `config/search-policy.json` controls which configured sources are included in the default public aggregated index.
+Windows, from the repository root:
 
-The default index prioritizes official, open-source, public-domain, Creative Commons, and research sources. Optional sources that repeatedly fail or whose collection-level authorization cannot be established are disabled by policy and recorded with a reason in `data/source-health.json`.
+```powershell
+.\update-index.cmd
+```
 
-A source with `required: true` can still fail the scheduled build when it produces an error or falls below its configured minimum. Optional source failures are reported without automatically blocking healthy required sources.
-
-## Local setup
+Raspberry Pi or another Linux system:
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate   # Windows: .venv\Scripts\activate
-python -m pip install -r requirements.txt
-python -m pytest -q
+chmod +x update-index.sh
+./update-index.sh
 ```
 
-Run a full network build:
+The first network collection can take hours. Checkpoints are committed to SQLite continuously by the collectors, so a later run resumes rather than starting the full source discovery again. The final catalog merge is transactional.
 
-```bash
-python scripts/build_index.py \
-  --config config/sources.yml \
-  --policy config/search-policy.json
+Useful Windows options:
 
-python scripts/validate_v3_backend.py \
-  --public-dir public \
-  --minimum-items 30000 \
-  --max-bytes 73400320
+```powershell
+.\update-index.ps1 -Offline -SkipGitHubBackup -SkipR2
+.\update-index.ps1 -SkipTests
 ```
 
-Run a no-network smoke build:
+`-Offline` is for local smoke testing; do not use it for a production release unless the persistent catalog already contains the intended records. Skipping tests is available for an operator who has already run the same local checks, but the default is safer.
 
-```bash
-python scripts/build_index.py \
-  --config config/sources.yml \
-  --policy config/search-policy.json \
-  --offline
+## What the updater does
 
-python scripts/validate_v3_backend.py \
-  --public-dir public \
-  --minimum-items 1 \
-  --max-bytes 73400320
-```
+The root script performs these steps in order:
 
-`public/` is generated output and is ignored by Git.
+1. creates `.venv` if needed and installs missing pinned dependencies;
+2. runs the Python tests and the fail-closed policy audit;
+3. collects enabled sources and builds v4 plus the v3/v2 fallbacks;
+4. validates the generated index and governance contract locally;
+5. creates local backup bundles under `backups/<release-id>/`;
+6. creates or updates `index-<release-id>` in GitHub Releases;
+7. publishes to R2 and changes `data/v4/current.json` last.
 
-## GitHub Pages deployment
+If GitHub backup creation fails, R2 is not changed. If R2 publishing fails, the previous R2 pointer remains live and the new local/GitHub backups remain available.
 
-1. Keep **Settings → Pages → Source** set to **GitHub Actions**.
-2. Push index changes to `main`, or run **Update JTorrent Torrent Aggregator Index** manually.
-3. Wait for both the build and deploy jobs to pass.
-4. Verify `https://index.jtorrent.net/data/status.json` reports `"search_contract": "v3"` before deploying a frontend that prefers v3.
+## Capacity and retention
 
-The frontend remains backward compatible with the v2 compatibility surface during rollout.
+There are no arbitrary record-count caps on the two expanded collectors. Capacity is controlled by bytes and provider cost:
 
-## Adding or re-enabling a source
+- local SQLite soft limit: 16 GiB;
+- generated/R2 soft limit: 8 GiB;
+- GitHub Release asset soft limit: 1.8 GiB per asset;
+- R2 v4 retention: latest three immutable releases;
+- local backup retention: latest two releases;
+- GitHub Releases: not automatically deleted.
 
-Supported adapter types are:
+Crossing the SQLite limit rolls back the catalog merge. Crossing the R2 limit stops publication before the current pointer changes. Backup assets are grouped into multiple ZIP files when needed.
+
+## Public endpoints
 
 ```text
-direct_list
-html_torrent_links
-rss_feed
-internet_archive_advancedsearch
+/data/status.json
+/data/source-health.json
+/data/manifest.json
+/data/v4/current.json
+/data/v4/releases/<release-id>/manifest.json
+/data/v4/releases/<release-id>/tokens/*.json
+/data/v4/releases/<release-id>/postings/**/*.json
+/data/v4/releases/<release-id>/docs/*.json
+/data/v3/manifest.json
+/data/v2/manifest.json
 ```
 
-Add the source in `config/sources.yml`. When a source is intentionally excluded from the default public index, add a precise reason to `config/search-policy.json`. Remove that policy entry only after the source has been revalidated and produces useful records.
+Each v4 posting is:
 
-Large sources may define source-level `max_items`, `rows`, and `max_pages`. Source-level limits override the global default.
+```text
+[doc_id, category_index, source_index, scope_index, static_score]
+```
 
-## Deduplication
+## Source and rights operations
 
-Deduplication priority is:
+Configured sources live in `config/sources.yml`. Scope assignments and disabled-source reasons live in `config/search-policy.json`. Do not enable a source by deleting a policy entry alone; the source configuration, adapter, scope, and policy contract must agree.
 
-1. infohash from torrent metadata or magnet URI;
-2. normalized magnet infohash;
-3. normalized `.torrent` URL;
-4. normalized source/details URL;
-5. normalized title plus size.
+For an accepted copyright or safety suppression, add the exact lowercase infohash or exact URL to `config/suppressions.yml`, run the local tests, then publish a new index release. Do not store claimant personal information in that file.
 
-Duplicate records merge useful metadata and mirrors rather than discarding the richer record.
+## Manual fallback workflow
 
-## Further documentation
+`.github/workflows/update-index.yml` has only `workflow_dispatch`. It is not part of normal updates and consumes no Actions minutes unless started manually. It keeps the previous GitHub Pages deployment path as a recovery option.
 
-- `docs/search-v3.md` — v3 contract and performance behavior.
-- `docs/frontend-integration.md` — frontend implementation sequence.
-- `docs/architecture-for-millions.md` — current static limits and future scaling path.
-- `docs/github-actions-guide.md` — scheduled build and failure handling.
-- `docs/source-adapters.md` — source adapter configuration.
+## Local commands
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest -q
+.\.venv\Scripts\python.exe scripts\build_index.py --config config\sources.yml --policy config\search-policy.json --offline
+.\.venv\Scripts\python.exe scripts\validate_v4_backend.py --public-dir public --minimum-items 1 --max-bytes 8589934592
+```
+
+Further details are in `docs/search-v4.md` and the adapter documentation under `docs/`.

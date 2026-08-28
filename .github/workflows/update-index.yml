@@ -2,19 +2,6 @@ name: Update JTorrent Torrent Aggregator Index
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: '30 3 * * *'
-    - cron: '30 15 * * *'
-  push:
-    branches:
-      - main
-    paths:
-      - 'config/**'
-      - 'scripts/**'
-      - 'tests/**'
-      - 'requirements.txt'
-      - 'pyproject.toml'
-      - '.github/workflows/update-index.yml'
 
 permissions:
   contents: read
@@ -25,14 +12,14 @@ env:
   PYTHONUNBUFFERED: '1'
 
 concurrency:
-  group: jtorrent-aggregator-index-pages
+  group: jtorrent-aggregator-index-manual-fallback
   cancel-in-progress: false
 
 jobs:
   build:
     name: Build static JSON backend
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 360
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -72,23 +59,24 @@ jobs:
 
       - name: Validate generated backend files and performance budget
         run: |
-          python scripts/validate_v3_backend.py \
+          python scripts/validate_v4_backend.py \
             --public-dir public \
             --minimum-items 30000 \
-            --max-bytes 73400320
+            --max-bytes 8589934592
           python - <<'PY'
           import json
           from pathlib import Path
 
           status = json.loads(Path("public/data/status.json").read_text(encoding="utf-8"))
-          v3 = json.loads(Path("public/data/v3/manifest.json").read_text(encoding="utf-8"))
+          current = json.loads(Path("public/data/v4/current.json").read_text(encoding="utf-8"))
+          v4 = json.loads(Path("public", current["manifest_path"]).read_text(encoding="utf-8"))
           health = json.loads(Path("public/data/source-health.json").read_text(encoding="utf-8"))
           print(
               f"Generated {status.get('item_count', 0):,} items with search {status.get('search_contract')}; "
               f"{status.get('healthy_source_count', 0)} healthy, "
               f"{status.get('failed_source_count', 0)} failed, "
               f"{len(health.get('disabled_sources', []))} policy-disabled sources; "
-              f"{len(v3.get('doc_shards', []))} compact document shards"
+              f"{len(v4.get('doc_shards', []))} versioned document shards"
           )
           PY
 
@@ -109,6 +97,7 @@ jobs:
             public/data/status.json
             public/data/source-health.json
             public/data/manifest.json
+            public/data/v4/current.json
             public/data/v3/manifest.json
             public/data/v2/manifest.json
             public/data/sources.json

@@ -1,15 +1,30 @@
 {
-  "contractVersion": 3,
-  "defaultIndexScope": "open-official-research",
+  "contractVersion": 4,
+  "defaultIndexScope": "open-authorized",
+  "scopeDefinitions": {
+    "open-authorized": {
+      "label": "Authorized / open",
+      "description": "Official, open-source, open-data, Creative Commons, public-domain, and research sources.",
+      "defaultIncluded": true
+    },
+    "third-party-unverified": {
+      "label": "Third-party / unverified",
+      "description": "Public third-party listings whose item-level authorization must be checked by the user.",
+      "defaultIncluded": false
+    }
+  },
+  "sourceScopes": {
+    "the_pirate_bay": "third-party-unverified",
+    "yts_meta_search": "third-party-unverified"
+  },
   "disabledSources": {
     "linuxtracker_recent": "Repeatedly returned no usable records; keep configured for future re-evaluation.",
-    "nyaa_recent": "Excluded from the default aggregated index because authorization cannot be established at collection level.",
-    "the_pirate_bay": "Excluded from the default aggregated index because authorization cannot be established at collection level.",
-    "igg_games": "Excluded from the default aggregated index because authorization cannot be established at collection level.",
-    "limetorrent": "Excluded from the default aggregated index because authorization cannot be established at collection level.",
-    "skidrow_reloaded": "Excluded from the default aggregated index because authorization cannot be established at collection level.",
-    "yts_official": "Excluded from the default aggregated index because authorization cannot be established at collection level."
+    "nyaa_recent": "Not included in this approved source expansion.",
+    "igg_games": "Not included in this approved source expansion.",
+    "limetorrent": "Not included in this approved source expansion.",
+    "skidrow_reloaded": "Not included in this approved source expansion."
   },
+  "suppressionPath": "config/suppressions.yml",
   "output": {
     "legacy_shards": false,
     "group_files": false,
@@ -20,6 +35,14 @@
       "max_query_tokens": 8,
       "max_tokens_per_record": 32,
       "max_postings_per_token": 50000
+    },
+    "search_v4": {
+      "enabled": true,
+      "doc_shard_bytes": 65536,
+      "token_bucket_prefix_chars": 2,
+      "max_query_tokens": 8,
+      "max_tokens_per_record": 32,
+      "posting_chunk_entries": 10000
     }
   },
   "governance": {
@@ -34,7 +57,6 @@
     "minimumHealthySources": 8,
     "maximumFailedSources": 0,
     "minimumItems": 30000,
-    "maximumArtifactBytes": 73400320,
-    "expectedPolicyDisabledSources": 7
+    "maximumArtifactBytes": 8589934592
   }
 }

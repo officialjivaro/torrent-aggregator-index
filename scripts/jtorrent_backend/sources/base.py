@@ -24,6 +24,7 @@ class SourceAdapter(ABC):
             "license": self.source.get("license"),
             "license_url": self.source.get("license_url"),
             "copyright_status": self.source.get("copyright_status"),
+            "policy_scope": self.source.get("policy_scope", "open-authorized"),
             "tags": list(self.source.get("tags") or []),
             "fetched_at": self.fetched_at,
         }

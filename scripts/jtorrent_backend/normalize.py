@@ -31,7 +31,10 @@ TEXT_FIELDS = [
     "license",
     "license_url",
     "copyright_status",
+    "policy_scope",
     "description",
+    "first_seen",
+    "last_seen",
     "hash_source",
     "fetched_at",
 ]

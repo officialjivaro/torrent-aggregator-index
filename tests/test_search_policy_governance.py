@@ -43,10 +43,20 @@ def config() -> dict:
 
 def policy() -> dict:
     return {
-        "contractVersion": 3,
-        "defaultIndexScope": "open-official-research",
+        "contractVersion": 4,
+        "defaultIndexScope": "open-authorized",
+        "scopeDefinitions": {
+            "open-authorized": {"label": "Authorized / open", "defaultIncluded": True},
+            "third-party-unverified": {"label": "Third-party / unverified", "defaultIncluded": False},
+        },
+        "sourceScopes": {},
         "disabledSources": {"uncertain": "Collection-level authorization is unverified."},
-        "output": {"legacy_shards": False, "group_files": False, "search_v3": {"enabled": True}},
+        "output": {
+            "legacy_shards": False,
+            "group_files": False,
+            "search_v3": {"enabled": True},
+            "search_v4": {"enabled": True},
+        },
         "governance": {
             "failClosed": True,
             "allowedPublicCopyrightStatuses": ["open-source", "open-data", "public-domain", "creative-commons"],

@@ -33,10 +33,13 @@ class TorrentItem:
     license: str | None = None
     license_url: str | None = None
     copyright_status: str | None = None
+    policy_scope: str | None = None
     description: str | None = None
     tags: list[str] = field(default_factory=list)
     files: list[dict[str, Any]] = field(default_factory=list)
     mirrors: list[dict[str, Any]] = field(default_factory=list)
+    first_seen: str | None = None
+    last_seen: str | None = None
     hash_source: str | None = None
     fetched_at: str | None = None
     raw: dict[str, Any] = field(default_factory=dict)

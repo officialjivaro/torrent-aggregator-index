@@ -41,6 +41,8 @@ def _mirror(item: TorrentItem) -> dict:
     return {
         "source_id": item.source_id,
         "source_name": item.source_name,
+        "source_homepage": item.source_homepage,
+        "policy_scope": item.policy_scope,
         "source_url": item.source_url,
         "details_url": item.details_url,
         "torrent_url": item.torrent_url,
@@ -57,6 +59,12 @@ def merge_items(existing: TorrentItem, incoming: TorrentItem) -> TorrentItem:
     existing.tags = _merge_lists(existing.tags, incoming.tags)
     existing.trackers = _merge_lists(existing.trackers, incoming.trackers)
     existing.files = existing.files or incoming.files
+    scopes = {str(value) for value in [existing.policy_scope, incoming.policy_scope] if value}
+    existing.policy_scope = "open-authorized" if "open-authorized" in scopes else (incoming.policy_scope or existing.policy_scope)
+    if incoming.first_seen and (not existing.first_seen or incoming.first_seen < existing.first_seen):
+        existing.first_seen = incoming.first_seen
+    if incoming.last_seen and (not existing.last_seen or incoming.last_seen > existing.last_seen):
+        existing.last_seen = incoming.last_seen
     existing.raw.update({k: v for k, v in incoming.raw.items() if k not in existing.raw})
     for m in [_mirror(existing), _mirror(incoming), *incoming.mirrors]:
         if any(m == known for known in existing.mirrors):

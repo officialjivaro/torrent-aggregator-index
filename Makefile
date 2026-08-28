@@ -16,7 +16,7 @@ build-offline:
 	python scripts/build_index.py --config config/sources.yml --policy config/search-policy.json --offline
 
 validate:
-	python scripts/validate_v3_backend.py --public-dir public --minimum-items 30000 --max-bytes 73400320
+	python scripts/validate_v4_backend.py --public-dir public --minimum-items 30000 --max-bytes 8589934592
 
 verify-final:
 	python scripts/verify_final_phase.py --generated-dir public

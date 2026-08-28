@@ -9,6 +9,8 @@ ALLOWED_SOURCE_TYPES = {
     "html_torrent_links",
     "rss_feed",
     "internet_archive_advancedsearch",
+    "apibay",
+    "yts_meta_search",
 }
 DEFAULT_ALLOWED_PUBLIC_STATUSES = {
     "open-source",
@@ -37,8 +39,8 @@ def validate_policy_contract(config: dict[str, Any], policy: dict[str, Any]) -> 
     """Validate the source registry and fail-closed public-index policy.
 
     The complete configured registry stays in ``config/sources.yml``.  Sources
-    with uncertain collection-level authorization may remain documented there,
-    but they must be explicitly disabled by policy before a public build can run.
+    with uncertain collection-level authorization must be either explicitly
+    disabled or assigned to a non-default opt-in scope before a public build runs.
     """
 
     errors: list[str] = []
@@ -48,10 +50,10 @@ def validate_policy_contract(config: dict[str, Any], policy: dict[str, Any]) -> 
     if not isinstance(policy, dict):
         raise PolicyError("Search policy must be a JSON object.")
 
-    if policy.get("contractVersion") != 3:
-        errors.append("Search policy contractVersion must be 3.")
-    if policy.get("defaultIndexScope") != "open-official-research":
-        errors.append("Search policy defaultIndexScope must be 'open-official-research'.")
+    if policy.get("contractVersion") != 4:
+        errors.append("Search policy contractVersion must be 4.")
+    if policy.get("defaultIndexScope") != "open-authorized":
+        errors.append("Search policy defaultIndexScope must be 'open-authorized'.")
 
     governance = policy.get("governance") or {}
     if not isinstance(governance, dict):
@@ -67,6 +69,36 @@ def validate_policy_contract(config: dict[str, Any], policy: dict[str, Any]) -> 
     for source_id, reason in disabled.items():
         if not _nonempty_string(source_id) or not _nonempty_string(reason):
             errors.append("Every disabled source must have a non-empty ID and reason.")
+
+    scope_definitions = policy.get("scopeDefinitions") or {}
+    if not isinstance(scope_definitions, dict):
+        errors.append("Search policy scopeDefinitions must be an object.")
+        scope_definitions = {}
+    required_scopes = {"open-authorized", "third-party-unverified"}
+    if not required_scopes.issubset(scope_definitions):
+        errors.append("Search policy must define open-authorized and third-party-unverified scopes.")
+    for scope_id, definition in scope_definitions.items():
+        if not _nonempty_string(scope_id) or not isinstance(definition, dict):
+            errors.append("Every scope definition must have a non-empty ID and object value.")
+            continue
+        if not _nonempty_string(definition.get("label")):
+            errors.append(f"Scope {scope_id} must define a label.")
+        if not isinstance(definition.get("defaultIncluded"), bool):
+            errors.append(f"Scope {scope_id} must define boolean defaultIncluded.")
+    if (scope_definitions.get("open-authorized") or {}).get("defaultIncluded") is not True:
+        errors.append("open-authorized must be included by default.")
+    if (scope_definitions.get("third-party-unverified") or {}).get("defaultIncluded") is not False:
+        errors.append("third-party-unverified must be opt-in.")
+
+    source_scopes = policy.get("sourceScopes") or {}
+    if not isinstance(source_scopes, dict):
+        errors.append("Search policy sourceScopes must be an object.")
+        source_scopes = {}
+    for source_id, scope_id in source_scopes.items():
+        if not _nonempty_string(source_id) or not _nonempty_string(scope_id):
+            errors.append("Every source scope assignment must have non-empty source and scope IDs.")
+        elif scope_id not in scope_definitions:
+            errors.append(f"Source {source_id} uses unknown policy scope {scope_id!r}.")
 
     sources = config.get("sources") or []
     if not isinstance(sources, list) or not sources:
@@ -92,6 +124,9 @@ def validate_policy_contract(config: dict[str, Any], policy: dict[str, Any]) -> 
     unknown_disabled = sorted(set(disabled) - set(source_by_id))
     if unknown_disabled:
         errors.append("Policy disables unknown source IDs: " + ", ".join(unknown_disabled))
+    unknown_scoped = sorted(set(source_scopes) - set(source_by_id))
+    if unknown_scoped:
+        errors.append("Policy assigns scopes to unknown source IDs: " + ", ".join(unknown_scoped))
 
     allowed_statuses = governance.get("allowedPublicCopyrightStatuses") or sorted(DEFAULT_ALLOWED_PUBLIC_STATUSES)
     if not isinstance(allowed_statuses, list) or not all(_nonempty_string(item) for item in allowed_statuses):
@@ -109,6 +144,8 @@ def validate_policy_contract(config: dict[str, Any], policy: dict[str, Any]) -> 
         required = source.get("required", False) is True
         source_type = str(source.get("type") or "").strip()
         status = str(source.get("copyright_status") or "").strip().lower()
+        explicit_scope = source_scopes.get(source_id)
+        scope_id = str(explicit_scope or "open-authorized")
 
         if source_type not in ALLOWED_SOURCE_TYPES:
             errors.append(f"Source {source_id} has unsupported type {source_type!r}.")
@@ -128,33 +165,33 @@ def validate_policy_contract(config: dict[str, Any], policy: dict[str, Any]) -> 
                 errors.append(f"Required source {source_id} cannot be disabled by policy.")
             if status not in allowed_status_set:
                 errors.append(f"Required source {source_id} has non-public copyright status {status!r}.")
+            if scope_id != "open-authorized":
+                errors.append(f"Required source {source_id} must use the open-authorized scope.")
             if _as_int(source.get("min_items"), 0) < 1:
                 errors.append(f"Required source {source_id} must define min_items >= 1.")
 
         if enabled and source_id not in disabled:
             active_ids.append(source_id)
-            if status not in allowed_status_set:
+            if status not in allowed_status_set and not explicit_scope:
                 errors.append(
-                    f"Enabled public source {source_id} has status {status!r} but is not disabled by policy."
+                    f"Enabled source {source_id} has status {status!r} but has no explicit opt-in scope."
                 )
         elif status not in allowed_status_set:
             uncertain_ids.append(source_id)
 
-        if require_unknown_disabled and status in {"", "unknown", "unclear", "unverified"} and source_id not in disabled:
-            errors.append(f"Source {source_id} has uncertain authorization and must be explicitly policy-disabled.")
-
-    expected_disabled = _as_int(governance.get("expectedPolicyDisabledSources"), len(disabled))
-    if expected_disabled != len(disabled):
-        errors.append(
-            f"Policy-disabled source count changed: {len(disabled)} != expected {expected_disabled}."
-        )
+        if require_unknown_disabled and status in {"", "unknown", "unclear", "unverified"}:
+            if source_id not in disabled and explicit_scope != "third-party-unverified":
+                errors.append(
+                    f"Source {source_id} has uncertain authorization and must be disabled or explicitly assigned "
+                    "to third-party-unverified."
+                )
 
     settings = config.get("settings") or {}
     if not isinstance(settings, dict):
         errors.append("settings must be an object.")
         settings = {}
     if settings.get("base_url") != "https://index.jtorrent.net":
-        errors.append("settings.base_url must be the index.jtorrent.net GitHub Pages origin.")
+        errors.append("settings.base_url must be the index.jtorrent.net index origin.")
     if settings.get("custom_domain") != "index.jtorrent.net":
         errors.append("settings.custom_domain must be index.jtorrent.net.")
     if settings.get("frontend_origin") != "https://www.jtorrent.net":
@@ -176,6 +213,9 @@ def validate_policy_contract(config: dict[str, Any], policy: dict[str, Any]) -> 
     search_v3 = output.get("search_v3") or {}
     if not isinstance(search_v3, dict) or search_v3.get("enabled") is not True:
         errors.append("Search policy output.search_v3.enabled must be true.")
+    search_v4 = output.get("search_v4") or {}
+    if not isinstance(search_v4, dict) or search_v4.get("enabled") is not True:
+        errors.append("Search policy output.search_v4.enabled must be true.")
 
     if not required_ids:
         warnings.append("No required sources are configured.")
@@ -186,13 +226,14 @@ def validate_policy_contract(config: dict[str, Any], policy: dict[str, Any]) -> 
         raise PolicyError("\n".join(errors))
 
     return {
-        "contract_version": 3,
+        "contract_version": 4,
         "source_count": len(source_ids),
         "active_source_ids": sorted(active_ids),
         "required_source_ids": sorted(required_ids),
         "disabled_source_ids": sorted(disabled),
         "uncertain_source_ids": sorted(set(uncertain_ids)),
         "allowed_public_copyright_statuses": sorted(allowed_status_set),
+        "source_scopes": {source_id: source_scopes.get(source_id, "open-authorized") for source_id in source_ids},
         "warnings": warnings,
     }
 
@@ -202,9 +243,11 @@ def apply_policy(config: dict[str, Any], policy: dict[str, Any]) -> tuple[dict[s
 
     result = copy.deepcopy(config)
     disabled = policy.get("disabledSources") or {}
+    source_scopes = policy.get("sourceScopes") or {}
     disabled_records: list[dict[str, Any]] = []
     for source in result.get("sources", []):
         source_id = source.get("id")
+        source["policy_scope"] = source_scopes.get(source_id, "open-authorized")
         if source_id not in disabled:
             continue
         source["enabled"] = False
@@ -218,6 +261,9 @@ def apply_policy(config: dict[str, Any], policy: dict[str, Any]) -> tuple[dict[s
         })
 
     settings = result.setdefault("settings", {})
+    settings["policy_scopes"] = copy.deepcopy(policy.get("scopeDefinitions") or {})
+    settings["default_index_scope"] = policy.get("defaultIndexScope", "open-authorized")
+    settings["suppression_path"] = policy.get("suppressionPath", "config/suppressions.yml")
     output = settings.setdefault("output", {})
     output.update(policy.get("output") or {})
     return result, disabled_records

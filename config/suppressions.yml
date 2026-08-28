@@ -1,0 +1,6 @@
+version: 1
+description: >-
+  Items listed here are excluded from every generated index and remain excluded
+  on later collection runs. Do not include claimant personal information.
+infohashes: []
+urls: []

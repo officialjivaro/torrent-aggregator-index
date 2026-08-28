@@ -4,6 +4,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
+from .catalog import CatalogStore, load_suppressions
 from .config import load_config
 from .dedupe import dedupe_items
 from .http import HttpClient, make_http_settings
@@ -53,7 +54,9 @@ def _max_items_for_source(settings: dict[str, Any], source: dict[str, Any]) -> i
     if source.get("max_items") is not None:
         return max(0, _as_int(source.get("max_items"), 750))
     limits = settings.get("limits", {}) or {}
-    return max(0, _as_int(limits.get("max_items_per_source"), 750))
+    if limits.get("max_items_per_source") is not None:
+        return max(0, _as_int(limits.get("max_items_per_source"), 0))
+    return 0
 
 
 def _record_source_problem(
@@ -100,13 +103,23 @@ def build_index(config_path: Path, *, offline: bool = False, strict: bool = Fals
     config = load_config(config_path)
     settings = config.get("settings", {}) or {}
     limits = settings.get("limits", {}) or {}
+    state = settings.get("state", {}) or {}
+    catalog_path = Path(state.get("path", "state/catalog.sqlite")) if _as_bool(state.get("enabled"), False) else None
+    catalog_soft_limit_bytes = max(0, _as_int(state.get("soft_limit_bytes"), 0))
+    suppression_path = Path(settings.get("suppression_path", "config/suppressions.yml"))
+    suppressions = load_suppressions(suppression_path)
     generated_at = utc_now_iso()
     warnings: list[str] = []
     errors: list[str] = []
 
     http = HttpClient(make_http_settings(settings))
 
-    all_items: list[TorrentItem] = _manual_items(config, generated_at)
+    manual_items = _manual_items(config, generated_at)
+    all_items: list[TorrentItem] = [] if catalog_path else list(manual_items)
+    raw_item_count = len(manual_items)
+    catalog = CatalogStore(catalog_path) if catalog_path else None
+    if catalog:
+        catalog.merge(manual_items, generated_at, catalog_soft_limit_bytes or None)
     source_summaries: list[dict[str, Any]] = []
 
     enabled_sources = [s for s in config.get("sources", []) if s.get("enabled", False)]
@@ -130,6 +143,7 @@ def build_index(config_path: Path, *, offline: bool = False, strict: bool = Fals
                 "license": source.get("license"),
                 "license_url": source.get("license_url"),
                 "copyright_status": source.get("copyright_status"),
+                "policy_scope": source.get("policy_scope", "open-authorized"),
                 "max_items": max_items,
                 "min_items": min_items,
                 # item_count is the raw number produced by this adapter before
@@ -154,17 +168,32 @@ def build_index(config_path: Path, *, offline: bool = False, strict: bool = Fals
                 continue
 
             produced = 0
+            catalog_batch: list[TorrentItem] = []
+            catalog_batch_size = max(1, _as_int(source.get("catalog_batch_size"), 100))
             try:
-                adapter = adapter_cls(source, http)
+                adapter_source = dict(source)
+                if catalog_path:
+                    adapter_source["_catalog_path"] = str(catalog_path)
+                adapter = adapter_cls(adapter_source, http)
                 for item in adapter.fetch():
                     if max_items and produced >= max_items:
                         summary["reached_max_items"] = True
                         break
                     item = normalize_item(item)
-                    all_items.append(item)
+                    raw_item_count += 1
+                    if catalog:
+                        catalog_batch.append(item)
+                        if len(catalog_batch) >= catalog_batch_size:
+                            catalog.merge(catalog_batch, generated_at, catalog_soft_limit_bytes or None)
+                            catalog_batch.clear()
+                    else:
+                        all_items.append(item)
                     produced += 1
                     # Keep the summary accurate even if a later page/doc fails.
                     summary["item_count"] = produced
+                if catalog and catalog_batch:
+                    catalog.merge(catalog_batch, generated_at, catalog_soft_limit_bytes or None)
+                    catalog_batch.clear()
                 if max_items and produced >= max_items:
                     summary["reached_max_items"] = True
                     warnings.append(f"{sid}: reached max_items={max_items}")
@@ -207,6 +236,7 @@ def build_index(config_path: Path, *, offline: bool = False, strict: bool = Fals
                     "license": source.get("license"),
                     "license_url": source.get("license_url"),
                     "copyright_status": source.get("copyright_status"),
+                    "policy_scope": source.get("policy_scope", "open-authorized"),
                     "max_items": _max_items_for_source(settings, source),
                     "min_items": max(0, _as_int(source.get("min_items"), 0)),
                     "item_count": 0,
@@ -216,13 +246,22 @@ def build_index(config_path: Path, *, offline: bool = False, strict: bool = Fals
                 }
             )
 
-    items = dedupe_items(all_items)
+    active_source_ids = {str(source.get("id")) for source in enabled_sources if source.get("id")}
+    active_source_ids.update(str(item.source_id) for item in manual_items if item.source_id)
+    suppressed_count = 0
+    if catalog:
+        items, suppressed_count = catalog.load_active(active_source_ids, suppressions)
+        catalog_item_count = catalog.count()
+        catalog.record_run(generated_at, raw_item_count, catalog_item_count, suppressed_count)
+        catalog.close()
+        fetched_item_count = raw_item_count
+    else:
+        fetched_items = dedupe_items(all_items)
+        items = [item for item in fetched_items if not suppressions.matches(item)]
+        suppressed_count = len(fetched_items) - len(items)
+        catalog_item_count = len(fetched_items)
+        fetched_item_count = len(fetched_items)
     items.sort(key=lambda i: ((i.category or ""), (i.title or "").lower()))
-
-    max_total = _as_int(limits.get("max_items_total"), 10000)
-    if len(items) > max_total:
-        warnings.append(f"Truncated items from {len(items)} to max_items_total={max_total}")
-        items = items[:max_total]
 
     min_total = _as_int(limits.get("min_total_items"), 0)
     if min_total and len(items) < min_total and not offline:
@@ -230,6 +269,7 @@ def build_index(config_path: Path, *, offline: bool = False, strict: bool = Fals
 
     counts_by_category = Counter(i.category or "uncategorized" for i in items)
     counts_by_source = Counter(i.source_id or "unknown" for i in items)
+    counts_by_scope = Counter(i.policy_scope or "open-authorized" for i in items)
     _add_indexed_counts(source_summaries, counts_by_source)
 
     manifest = {
@@ -239,12 +279,18 @@ def build_index(config_path: Path, *, offline: bool = False, strict: bool = Fals
         "custom_domain": settings.get("custom_domain"),
         "frontend_origin": settings.get("frontend_origin"),
         "item_count": len(items),
-        "raw_item_count": len(all_items),
+        "raw_item_count": raw_item_count,
+        "fetched_item_count": fetched_item_count,
+        "catalog_item_count": catalog_item_count,
+        "suppressed_item_count": suppressed_count,
         "enabled_source_count": len(enabled_sources),
         "required_source_count": sum(1 for s in enabled_sources if _as_bool(s.get("required"), True)),
         "optional_source_count": sum(1 for s in enabled_sources if not _as_bool(s.get("required"), True)),
         "counts_by_category": dict(sorted(counts_by_category.items())),
         "counts_by_source": dict(sorted(counts_by_source.items())),
+        "counts_by_scope": dict(sorted(counts_by_scope.items())),
+        "policy_scopes": settings.get("policy_scopes", {}),
+        "default_index_scope": settings.get("default_index_scope", "open-authorized"),
         "warnings": warnings,
         "errors": errors,
         "source_allowlist_mode": "enabled-sources-only",

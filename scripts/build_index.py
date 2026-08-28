@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the JTorrent static backend and publish the v3 search contract."""
+"""Build the JTorrent static backend and publish the versioned v4 search contract."""
 from __future__ import annotations
 
 import argparse
@@ -17,6 +17,7 @@ from jtorrent_backend.builder import build_index  # noqa: E402
 from jtorrent_backend.config import load_config  # noqa: E402
 from jtorrent_backend.search_policy import PolicyError, apply_policy, validate_policy_contract  # noqa: E402
 from jtorrent_backend.search_v3 import build_search_v3  # noqa: E402
+from jtorrent_backend.search_v4 import build_search_v4  # noqa: E402
 
 DEFAULT_POLICY = ROOT / "config" / "search-policy.json"
 
@@ -69,6 +70,7 @@ def main() -> int:
         manifest = build_index(effective_path, offline=args.offline, strict=args.strict)
 
     v3 = build_search_v3(output_dir, settings.get("output", {}))
+    v4 = build_search_v4(output_dir, settings.get("output", {}))
     health_path = output_dir / "data" / "source-health.json"
     health_payload = json.loads(health_path.read_text(encoding="utf-8"))
     health_payload["disabled_sources"] = disabled_records
@@ -79,16 +81,17 @@ def main() -> int:
     status_payload["disabled_source_count"] = len(disabled_records)
     status_path.write_text(json.dumps(status_payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     v3["status"] = status_payload
+    v4["status"] = status_payload
 
     root_manifest_path = output_dir / "data" / "manifest.json"
     root_payload = json.loads(root_manifest_path.read_text(encoding="utf-8"))
     root_payload["disabled_source_count"] = len(disabled_records)
     root_manifest_path.write_text(json.dumps(root_payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
-    status = v3.get("status", {}) if v3.get("enabled") else {}
+    status = v4.get("status", {}) if v4.get("enabled") else v3.get("status", {})
     print(
         f"Built {manifest.get('item_count', 0)} results into {output_dir}; "
-        f"search contract {status.get('search_contract', 'v2')} with "
+        f"search contract {status.get('search_contract', 'v3')} with "
         f"{status.get('healthy_source_count', 0)} healthy sources and "
         f"{len(disabled_records)} policy-disabled sources"
     )
