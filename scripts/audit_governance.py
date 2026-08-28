@@ -58,13 +58,14 @@ def generated_audit(public: Path, policy: dict[str, Any]) -> tuple[dict[str, Any
 
     minimum_items = int(governance.get("minimumItems", 30_000))
     minimum_healthy = int(governance.get("minimumHealthySources", 1))
-    maximum_failed = int(governance.get("maximumFailedSources", 0))
+    legacy_maximum_failed = int(governance.get("maximumFailedSources", 0))
+    maximum_required_failed = int(governance.get("maximumFailedRequiredSources", legacy_maximum_failed))
+    maximum_optional_failed = int(governance.get("maximumFailedOptionalSources", legacy_maximum_failed))
     maximum_bytes = int(governance.get("maximumArtifactBytes", 70 * 1024 * 1024))
 
     if status.get("search_contract") != "v4": errors.append("status.json must advertise search contract v4.")
     if int(status.get("item_count", 0)) < minimum_items: errors.append(f"Item count is below {minimum_items}.")
     if int(status.get("healthy_source_count", 0)) < minimum_healthy: errors.append(f"Healthy source count is below {minimum_healthy}.")
-    if int(status.get("failed_source_count", 0)) > maximum_failed: errors.append(f"Failed source count exceeds {maximum_failed}.")
     if int(status.get("disabled_source_count", -1)) != len(disabled_ids): errors.append("Status disabled-source count differs from policy.")
     if root_manifest.get("search_contract") != "v4": errors.append("Root manifest does not advertise v4.")
     if v4.get("version") != 4: errors.append("v4 manifest has the wrong version.")
@@ -78,6 +79,20 @@ def generated_audit(public: Path, policy: dict[str, Any]) -> tuple[dict[str, Any
     health_disabled = sorted(str(item.get("id")) for item in health.get("disabled_sources", []) if item.get("id"))
     if health_disabled != disabled_ids: errors.append("Generated disabled-source inventory differs from policy.")
     health_sources = health.get("sources") or []
+    failed_required = [
+        item for item in health_sources
+        if str(item.get("state") or "").lower() == "failed" and item.get("required") is True
+    ]
+    failed_optional = [
+        item for item in health_sources
+        if str(item.get("state") or "").lower() == "failed" and item.get("required") is not True
+    ]
+    if len(failed_required) > maximum_required_failed:
+        errors.append(f"Required failed source count exceeds {maximum_required_failed}.")
+    if len(failed_optional) > maximum_optional_failed:
+        errors.append(f"Optional failed source count exceeds {maximum_optional_failed}.")
+    if int(status.get("failed_source_count", 0)) != len(failed_required) + len(failed_optional):
+        errors.append("Status failed-source count differs from source health.")
     active_health_ids = {
         str(item.get("id"))
         for item in health_sources
@@ -107,6 +122,8 @@ def generated_audit(public: Path, policy: dict[str, Any]) -> tuple[dict[str, Any
         "item_count": int(status.get("item_count", 0)),
         "healthy_source_count": int(status.get("healthy_source_count", 0)),
         "failed_source_count": int(status.get("failed_source_count", 0)),
+        "failed_required_source_count": len(failed_required),
+        "failed_optional_source_count": len(failed_optional),
         "disabled_source_count": len(disabled_ids),
         "document_shards": len(v4.get("doc_shards", [])),
         "v4_token_bucket_parts": len(v4.get("token_buckets", [])),

@@ -55,7 +55,8 @@
     ],
     "requirePolicyForUnknownStatus": true,
     "minimumHealthySources": 8,
-    "maximumFailedSources": 0,
+    "maximumFailedRequiredSources": 0,
+    "maximumFailedOptionalSources": 2,
     "minimumItems": 30000,
     "maximumArtifactBytes": 8589934592
   }
