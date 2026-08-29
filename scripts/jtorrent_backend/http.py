@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 
 import requests
@@ -15,9 +16,33 @@ class HttpSettings:
     max_torrent_bytes: int = 5 * 1024 * 1024
 
 
+class HttpRequestError(RuntimeError):
+    def __init__(
+        self,
+        url: str,
+        cause: Exception,
+        *,
+        status_code: int | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> None:
+        super().__init__(f"GET failed for {url}: {cause}")
+        self.url = url
+        self.cause = cause
+        self.status_code = status_code
+        self.headers = {str(key).lower(): str(value) for key, value in (headers or {}).items()}
+
+
 class HttpClient:
-    def __init__(self, settings: HttpSettings):
+    def __init__(
+        self,
+        settings: HttpSettings,
+        *,
+        sleep: Callable[[float], None] = time.sleep,
+        clock: Callable[[], float] = time.monotonic,
+    ):
         self.settings = settings
+        self._sleep = sleep
+        self._clock = clock
         self.session = requests.Session()
         self.session.headers.update({
             "User-Agent": settings.user_agent,
@@ -26,26 +51,47 @@ class HttpClient:
         })
         self._last_request = 0.0
 
-    def _throttle(self) -> None:
-        elapsed = time.time() - self._last_request
-        wait = self.settings.delay_seconds - elapsed
-        if wait > 0:
-            time.sleep(wait)
+    def sleep(self, seconds: float) -> None:
+        if seconds > 0:
+            self._sleep(seconds)
 
-    def get(self, url: str, *, stream: bool = False) -> requests.Response:
-        last_exc: Exception | None = None
-        for attempt in range(self.settings.retries + 1):
+    def _throttle(self, delay_seconds: float | None = None) -> None:
+        delay = self.settings.delay_seconds if delay_seconds is None else max(0.0, float(delay_seconds))
+        elapsed = self._clock() - self._last_request
+        wait = delay - elapsed
+        if wait > 0:
+            self.sleep(wait)
+
+    def get(
+        self,
+        url: str,
+        *,
+        stream: bool = False,
+        retries: int | None = None,
+        delay_seconds: float | None = None,
+    ) -> requests.Response:
+        last_exc: HttpRequestError | None = None
+        retry_count = self.settings.retries if retries is None else max(0, int(retries))
+        for attempt in range(retry_count + 1):
             try:
-                self._throttle()
+                self._throttle(delay_seconds)
                 response = self.session.get(url, timeout=self.settings.timeout_seconds, stream=stream)
-                self._last_request = time.time()
+                self._last_request = self._clock()
                 response.raise_for_status()
                 return response
             except Exception as exc:  # noqa: BLE001
-                last_exc = exc
-                if attempt < self.settings.retries:
-                    time.sleep(1.5 * (attempt + 1))
-        raise RuntimeError(f"GET failed for {url}: {last_exc}")
+                response = getattr(exc, "response", None)
+                last_exc = HttpRequestError(
+                    url,
+                    exc,
+                    status_code=int(response.status_code) if response is not None else None,
+                    headers=dict(response.headers) if response is not None else None,
+                )
+                if attempt < retry_count:
+                    self.sleep(1.5 * (attempt + 1))
+        if last_exc is None:  # pragma: no cover - the loop always executes
+            last_exc = HttpRequestError(url, RuntimeError("request did not run"))
+        raise last_exc
 
     def get_text(self, url: str) -> str:
         response = self.get(url)

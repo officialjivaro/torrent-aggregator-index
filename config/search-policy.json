@@ -10,7 +10,7 @@
     "third-party-unverified": {
       "label": "Third-party / unverified",
       "description": "Public third-party listings whose item-level authorization must be checked by the user.",
-      "defaultIncluded": false
+      "defaultIncluded": true
     }
   },
   "sourceScopes": {

@@ -343,8 +343,9 @@ def _source_health(source_rows: Any) -> list[dict[str, Any]]:
     result = []
     for source in source_rows:
         error = source.get("error")
+        warnings = [str(value) for value in (source.get("warnings") or []) if str(value).strip()]
         indexed = _as_int(source.get("indexed_item_count"), 0)
-        state = "healthy" if not error and indexed > 0 else "empty" if not error else "failed"
+        state = "failed" if error else "degraded" if warnings else "healthy" if indexed > 0 else "empty"
         result.append({
             "id": source.get("id"),
             "name": source.get("name"),
@@ -354,6 +355,7 @@ def _source_health(source_rows: Any) -> list[dict[str, Any]]:
             "indexed_item_count": indexed,
             "state": state,
             "error": error,
+            "warnings": warnings,
         })
     return result
 
@@ -465,6 +467,7 @@ def build_search_v3(public_dir: Path, output_options: dict[str, Any] | None = No
     )
 
     healthy = sum(1 for item in health if item["state"] == "healthy")
+    degraded = sum(1 for item in health if item["state"] == "degraded")
     failed = sum(1 for item in health if item["state"] == "failed")
     status = {
         "version": 1,
@@ -472,6 +475,7 @@ def build_search_v3(public_dir: Path, output_options: dict[str, Any] | None = No
         "item_count": len(compact_docs),
         "enabled_source_count": root_manifest.get("enabled_source_count", len(health)),
         "healthy_source_count": healthy,
+        "degraded_source_count": degraded,
         "failed_source_count": failed,
         "search_contract": "v3",
         "search_manifest": "data/v3/manifest.json",

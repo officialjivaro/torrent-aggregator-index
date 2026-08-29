@@ -385,6 +385,14 @@ sources:
   - 600
   expand_uploaders: true
   uploader_refresh_pages: 3
+  request_delay_seconds: 2
+  request_retries: 2
+  rate_limit_backoff_seconds:
+  - 60
+  - 120
+  - 300
+  - 600
+  rate_limit_wait_budget_seconds: 1200
   catalog_batch_size: 50
   tags:
   - general
@@ -394,7 +402,7 @@ sources:
   fetch_torrent_metadata: false
   required: false
   min_items: 0
-  notes: Opt-in third-party source collected through the public APIBay JSON interface with resumable uploader expansion.
+  notes: Third-party source collected through the public APIBay JSON interface with paced, resumable uploader expansion.
 - id: igg_games
   name: IGG-Games
   type: html_torrent_links
@@ -490,7 +498,7 @@ sources:
   fetch_torrent_metadata: false
   required: false
   min_items: 0
-  notes: Opt-in third-party meta-search source. Provider provenance returned by the endpoint is preserved on every record.
+  notes: Third-party meta-search source. Provider provenance returned by the endpoint is preserved on every record.
 manual_items:
 - title: Arch Linux latest ISO torrent
   category: linux

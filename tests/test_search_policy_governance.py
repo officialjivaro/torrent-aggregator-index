@@ -47,7 +47,7 @@ def policy() -> dict:
         "defaultIndexScope": "open-authorized",
         "scopeDefinitions": {
             "open-authorized": {"label": "Authorized / open", "defaultIncluded": True},
-            "third-party-unverified": {"label": "Third-party / unverified", "defaultIncluded": False},
+            "third-party-unverified": {"label": "Third-party / unverified", "defaultIncluded": True},
         },
         "sourceScopes": {},
         "disabledSources": {"uncertain": "Collection-level authorization is unverified."},
@@ -104,4 +104,11 @@ def test_policy_must_explicitly_fail_closed():
     value = policy()
     value["governance"]["failClosed"] = False
     with pytest.raises(PolicyError, match="failClosed"):
+        validate_policy_contract(config(), value)
+
+
+def test_third_party_scope_must_be_included_by_default():
+    value = policy()
+    value["scopeDefinitions"]["third-party-unverified"]["defaultIncluded"] = False
+    with pytest.raises(PolicyError, match="explicit opt-out"):
         validate_policy_contract(config(), value)

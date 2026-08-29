@@ -22,11 +22,11 @@ Cloudflare R2 is the serving origin. GitHub Releases and the local catalog/backu
 The policy in `config/search-policy.json` is fail closed:
 
 - `open-authorized` is included by default.
-- `third-party-unverified` requires an explicit website opt-in.
-- The Pirate Bay APIBay collector and YTS Meta Search are assigned to the opt-in scope.
+- `third-party-unverified` is also included by default, remains visibly labelled, and can be turned off by the visitor.
+- The Pirate Bay APIBay collector and YTS Meta Search remain assigned to the separate third-party scope.
 - Nyaa, IGG, LimeTorrent, and Skidrow remain disabled. LinuxTracker remains disabled because it produced no usable records.
 
-The opt-in changes visibility, not an item’s underlying authorization. Users must verify source, rights, and file safety.
+The visibility preference does not change an item’s underlying authorization. Users must verify source, rights, and file safety.
 
 ## One-time setup
 
@@ -85,6 +85,8 @@ The root script performs these steps in order:
 5. creates local backup bundles under `backups/<release-id>/`;
 6. creates or updates `index-<release-id>` in GitHub Releases;
 7. publishes to R2 and changes `data/v4/current.json` last.
+
+APIBay uploader expansion is deliberately paced at one request every two seconds. HTTP 429 responses use a run-wide 20-minute cooldown budget with 60-second, two-minute, five-minute, and ten-minute waits. An uploader that remains limited is deferred with its checkpoint unchanged while the remaining uploaders and cached top lists continue.
 
 If GitHub backup creation fails, R2 is not changed. If R2 publishing fails, the previous R2 pointer remains live and the new local/GitHub backups remain available.
 

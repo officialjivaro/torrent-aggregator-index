@@ -40,7 +40,7 @@ def validate_policy_contract(config: dict[str, Any], policy: dict[str, Any]) -> 
 
     The complete configured registry stays in ``config/sources.yml``.  Sources
     with uncertain collection-level authorization must be either explicitly
-    disabled or assigned to a non-default opt-in scope before a public build runs.
+    disabled or assigned to the labelled third-party scope before a public build runs.
     """
 
     errors: list[str] = []
@@ -87,8 +87,8 @@ def validate_policy_contract(config: dict[str, Any], policy: dict[str, Any]) -> 
             errors.append(f"Scope {scope_id} must define boolean defaultIncluded.")
     if (scope_definitions.get("open-authorized") or {}).get("defaultIncluded") is not True:
         errors.append("open-authorized must be included by default.")
-    if (scope_definitions.get("third-party-unverified") or {}).get("defaultIncluded") is not False:
-        errors.append("third-party-unverified must be opt-in.")
+    if (scope_definitions.get("third-party-unverified") or {}).get("defaultIncluded") is not True:
+        errors.append("third-party-unverified must be included by default so clients can offer an explicit opt-out.")
 
     source_scopes = policy.get("sourceScopes") or {}
     if not isinstance(source_scopes, dict):
@@ -174,7 +174,7 @@ def validate_policy_contract(config: dict[str, Any], policy: dict[str, Any]) -> 
             active_ids.append(source_id)
             if status not in allowed_status_set and not explicit_scope:
                 errors.append(
-                    f"Enabled source {source_id} has status {status!r} but has no explicit opt-in scope."
+                    f"Enabled source {source_id} has status {status!r} but has no explicit third-party scope."
                 )
         elif status not in allowed_status_set:
             uncertain_ids.append(source_id)

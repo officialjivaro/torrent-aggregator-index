@@ -13,6 +13,12 @@ class SourceAdapter(ABC):
         self.source = source
         self.http = http
         self.fetched_at = utc_now_iso()
+        self.warnings: list[str] = []
+
+    def add_warning(self, message: str) -> None:
+        value = str(message).strip()
+        if value and value not in self.warnings:
+            self.warnings.append(value)
 
     def base_item(self) -> dict:
         return {

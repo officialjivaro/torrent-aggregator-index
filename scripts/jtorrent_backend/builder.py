@@ -152,6 +152,7 @@ def build_index(config_path: Path, *, offline: bool = False, strict: bool = Fals
                 "indexed_item_count": 0,
                 "reached_max_items": False,
                 "error": None,
+                "warnings": [],
             }
             if adapter_cls is None:
                 msg = f"Unknown source type: {stype}"
@@ -170,6 +171,7 @@ def build_index(config_path: Path, *, offline: bool = False, strict: bool = Fals
             produced = 0
             catalog_batch: list[TorrentItem] = []
             catalog_batch_size = max(1, _as_int(source.get("catalog_batch_size"), 100))
+            adapter = None
             try:
                 adapter_source = dict(source)
                 if catalog_path:
@@ -220,6 +222,9 @@ def build_index(config_path: Path, *, offline: bool = False, strict: bool = Fals
                     warnings=warnings,
                     errors=errors,
                 )
+            if adapter is not None and adapter.warnings:
+                summary["warnings"] = list(adapter.warnings)
+                warnings.extend(f"{sid}: {message}" for message in adapter.warnings)
             source_summaries.append(summary)
     else:
         warnings.append("Offline mode enabled; network sources were skipped.")
@@ -243,6 +248,7 @@ def build_index(config_path: Path, *, offline: bool = False, strict: bool = Fals
                     "indexed_item_count": 0,
                     "reached_max_items": False,
                     "error": "offline mode",
+                    "warnings": [],
                 }
             )
 

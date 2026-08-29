@@ -190,6 +190,20 @@ class CatalogStore:
                 (source_id, key, json.dumps(value, separators=(",", ":")), updated_at),
             )
 
+    def list_checkpoints(self, source_id: str, key_prefix: str | None = None) -> dict[str, Any]:
+        if key_prefix is None:
+            rows = self.connection.execute(
+                "SELECT checkpoint_key, value_json FROM checkpoints WHERE source_id = ? ORDER BY checkpoint_key",
+                (source_id,),
+            )
+        else:
+            rows = self.connection.execute(
+                "SELECT checkpoint_key, value_json FROM checkpoints "
+                "WHERE source_id = ? AND checkpoint_key LIKE ? ORDER BY checkpoint_key",
+                (source_id, f"{key_prefix}%"),
+            )
+        return {str(row["checkpoint_key"]): json.loads(row["value_json"]) for row in rows}
+
     def record_run(self, generated_at: str, fetched_count: int, catalog_count: int, suppressed_count: int) -> None:
         with self.connection:
             self.connection.execute(
