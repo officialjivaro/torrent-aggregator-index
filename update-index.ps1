@@ -96,14 +96,26 @@ if (-not $SkipGitHubBackup) {
     & $gh.Source auth status
     if ($LASTEXITCODE -ne 0) { throw "GitHub CLI is not authenticated in this Windows session. Run: gh auth login --hostname github.com --git-protocol https --web" }
     $repo = "officialjivaro/torrent-aggregator-index"
-    & $gh.Source release view $release.tag --repo $repo 2>$null
-    if ($LASTEXITCODE -eq 0) {
+    $previousErrorActionPreference = $ErrorActionPreference
+    try {
+        # A missing release is expected on the first publish. Windows PowerShell 5.1
+        # otherwise promotes gh's stderr to a terminating NativeCommandError.
+        $ErrorActionPreference = "Continue"
+        $releaseLookupOutput = @(& $gh.Source release view $release.tag --repo $repo --json tagName 2>&1)
+        $releaseLookupExitCode = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
+    $releaseLookupMessage = ($releaseLookupOutput | Out-String).Trim()
+    if ($releaseLookupExitCode -eq 0) {
         $assetPaths = @($release.assets | ForEach-Object { $_.path })
         & $gh.Source release upload $release.tag @assetPaths --repo $repo --clobber
-    } else {
+    } elseif ($releaseLookupMessage -match "(?i)release not found") {
         $assetPaths = @($release.assets | ForEach-Object { $_.path })
         $notes = "Static JTorrent index backup. Release $($release.release_id); $($release.item_count) records; generated $($release.generated_at). R2 remains the live serving origin."
         & $gh.Source release create $release.tag @assetPaths --repo $repo --title "JTorrent index $($release.release_id)" --notes $notes
+    } else {
+        throw "GitHub Release lookup failed: $releaseLookupMessage"
     }
     if ($LASTEXITCODE -ne 0) { throw "GitHub Release backup failed; R2 was not changed." }
 }
