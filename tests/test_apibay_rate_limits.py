@@ -108,9 +108,26 @@ def test_rate_limited_uploader_is_deferred_without_losing_checkpoint(tmp_path) -
     assert http.sleeps == [1, 2]
     assert all(retries == 0 for _url, retries, _delay in http.calls)
     assert any("ABlocked deferred at page 7" in warning for warning in adapter.warnings)
+    assert any("fair queue will resume" in warning for warning in adapter.warnings)
     with CatalogStore(tmp_path / "catalog.sqlite") as store:
         assert store.get_checkpoint("the_pirate_bay", "uploader:ABlocked") == 7
         assert store.get_checkpoint("the_pirate_bay", "uploader:BGood") == -1
+        assert store.get_checkpoint("the_pirate_bay", "uploader-queue-cursor") == "ABlocked"
+        assert store.get_checkpoint("the_pirate_bay", "uploader-defer:ABlocked") > 0
+
+
+def test_next_run_rotates_to_uploader_after_rate_limited_cursor(tmp_path) -> None:
+    configured = source(tmp_path)
+    with CatalogStore(tmp_path / "catalog.sqlite") as store:
+        store.set_checkpoint("the_pirate_bay", "uploader:ABlocked", 7, "2026-01-01T00:00:00Z")
+        store.set_checkpoint("the_pirate_bay", "uploader:BGood", -1, "2026-01-01T00:00:00Z")
+        store.set_checkpoint("the_pirate_bay", "uploader-queue-cursor", "ABlocked", "2026-01-01T00:00:00Z")
+
+    http = FakeHttp([[row(1, "ABlocked")], []])
+    adapter = ApiBaySource(configured, http)
+    list(adapter.fetch())
+
+    assert "user%3ABGood%3A0" in http.calls[1][0]
 
 
 def test_retry_after_header_overrides_configured_cooldown(tmp_path) -> None:

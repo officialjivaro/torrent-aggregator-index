@@ -16,16 +16,17 @@ settings:
   state:
     enabled: true
     path: state/catalog.sqlite
-    soft_limit_bytes: 17179869184
+    soft_limit_bytes: 68719476736
   publishing:
     r2_bucket: torrent-aggregator-index
     r2_manage_cors: false
-    r2_soft_limit_bytes: 8589934592
-    keep_r2_versions: 3
+    r2_soft_limit_bytes: 68719476736
+    keep_r2_versions: 2
     github_repository: officialjivaro/torrent-aggregator-index
     github_asset_soft_limit_bytes: 1932735283
     local_backup_count: 2
   output:
+    v4_only: true
     scalable_search:
       enabled: true
       token_bucket_prefix_chars: 2
@@ -393,6 +394,8 @@ sources:
   - 300
   - 600
   rate_limit_wait_budget_seconds: 1200
+  uploader_defer_seconds: 21600
+  rate_limit_breaker_threshold: 1
   catalog_batch_size: 50
   tags:
   - general

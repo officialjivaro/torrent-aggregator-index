@@ -69,8 +69,20 @@ def main() -> int:
         )
         manifest = build_index(effective_path, offline=args.offline, strict=args.strict)
 
-    v3 = build_search_v3(output_dir, settings.get("output", {}))
-    v4 = build_search_v4(output_dir, settings.get("output", {}))
+    output_options = settings.get("output", {}) or {}
+    if output_options.get("v4_only") is True:
+        current_payload = json.loads((output_dir / "data" / "v4" / "current.json").read_text(encoding="utf-8"))
+        v4_manifest = json.loads((output_dir / str(current_payload["manifest_path"])).read_text(encoding="utf-8"))
+        v3 = {"enabled": False}
+        v4 = {
+            "enabled": True,
+            "status": json.loads((output_dir / "data" / "status.json").read_text(encoding="utf-8")),
+            "manifest": v4_manifest,
+            "current": current_payload,
+        }
+    else:
+        v3 = build_search_v3(output_dir, output_options)
+        v4 = build_search_v4(output_dir, output_options)
     health_path = output_dir / "data" / "source-health.json"
     health_payload = json.loads(health_path.read_text(encoding="utf-8"))
     health_payload["disabled_sources"] = disabled_records
@@ -80,7 +92,8 @@ def main() -> int:
     status_payload = json.loads(status_path.read_text(encoding="utf-8"))
     status_payload["disabled_source_count"] = len(disabled_records)
     status_path.write_text(json.dumps(status_payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    v3["status"] = status_payload
+    if v3.get("enabled"):
+        v3["status"] = status_payload
     v4["status"] = status_payload
 
     root_manifest_path = output_dir / "data" / "manifest.json"

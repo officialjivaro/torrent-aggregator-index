@@ -164,8 +164,11 @@ def publish_r2(public_dir: Path) -> dict[str, Any]:
         parts = key.split("/")
         if len(parts) > 4 and parts[:3] == ["data", "v4", "releases"]:
             by_release[parts[3]].append(key)
-    for stale_id in sorted((value for value in by_release if value != release_id)):
-        if projected <= soft_limit and len(by_release) < keep_versions:
+    stale_release_ids = sorted(value for value in by_release if value != release_id)
+    allowed_stale_releases = max(0, keep_versions - 1)
+    for stale_id in stale_release_ids:
+        remaining_stale = sum(1 for value in by_release if value != release_id)
+        if projected <= soft_limit and remaining_stale <= allowed_stale_releases:
             break
         keys = by_release.pop(stale_id)
         delete_keys(client, bucket, keys)

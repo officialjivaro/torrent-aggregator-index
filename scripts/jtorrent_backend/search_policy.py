@@ -210,9 +210,11 @@ def validate_policy_contract(config: dict[str, Any], policy: dict[str, Any]) -> 
         errors.append("Search policy output.legacy_shards must be false.")
     if output.get("group_files") is not False:
         errors.append("Search policy output.group_files must be false.")
+    if output.get("v4_only") is not True:
+        errors.append("Search policy output.v4_only must be true.")
     search_v3 = output.get("search_v3") or {}
-    if not isinstance(search_v3, dict) or search_v3.get("enabled") is not True:
-        errors.append("Search policy output.search_v3.enabled must be true.")
+    if not isinstance(search_v3, dict) or search_v3.get("enabled") is not False:
+        errors.append("Search policy output.search_v3.enabled must be false for the v4-only contract.")
     search_v4 = output.get("search_v4") or {}
     if not isinstance(search_v4, dict) or search_v4.get("enabled") is not True:
         errors.append("Search policy output.search_v4.enabled must be true.")

@@ -51,8 +51,19 @@ def _mirror(item: TorrentItem) -> dict:
 
 
 def merge_items(existing: TorrentItem, incoming: TorrentItem) -> TorrentItem:
+    incoming_is_newer = bool(
+        incoming.last_seen
+        and (not existing.last_seen or str(incoming.last_seen) >= str(existing.last_seen))
+    )
+    refreshable_fields = {
+        "seeders", "leechers", "completed", "source_url", "details_url",
+        "download_page_url", "torrent_url", "fetched_at",
+    }
     for field in existing.__dataclass_fields__:
         if field in {"tags", "files", "trackers", "mirrors", "raw"}:
+            continue
+        if incoming_is_newer and field in refreshable_fields and getattr(incoming, field) not in [None, "", []]:
+            setattr(existing, field, getattr(incoming, field))
             continue
         if getattr(existing, field) in [None, "", []] and getattr(incoming, field) not in [None, "", []]:
             setattr(existing, field, getattr(incoming, field))

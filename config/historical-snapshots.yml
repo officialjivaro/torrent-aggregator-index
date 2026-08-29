@@ -1,0 +1,24 @@
+version: 1
+snapshots:
+- id: tpb-archive-2012-10-06
+  name: The Pirate Bay Archive, 2012-10-06
+  enabled: true
+  source_id: the_pirate_bay
+  source_name: The Pirate Bay
+  source_homepage: https://thepiratebay.org/
+  provenance_url: https://archive.org/details/Backup_of_The_Pirate_Bay_32xxxxx-to-79xxxxx
+  archive_url: https://archive.org/download/Backup_of_The_Pirate_Bay_32xxxxx-to-79xxxxx/The_Pirate_Bay_Archive.zip
+  archive_filename: The_Pirate_Bay_Archive.zip
+  archive_format: tpb-details-7z-in-zip
+  archive_member_glob: '*/data/*/*.7z'
+  snapshot_date: '2012-10-06T00:00:00Z'
+  expected_bytes: 1211496851
+  checksum:
+    algorithm: sha1
+    value: f2046af4f4c2aacad914efa5e63054c06d555e5f
+  copyright_status: unknown
+  policy_scope: third-party-unverified
+  description: >-
+    Archive.org snapshot described as the complete Pirate Bay catalogue as of
+    2012-10-06. Only listing metadata from nested details.csv files is imported;
+    comments, descriptions, file lists, and payload data are excluded.

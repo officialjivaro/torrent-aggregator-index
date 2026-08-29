@@ -11,6 +11,7 @@ from .http import HttpClient, make_http_settings
 from .models import TorrentItem
 from .normalize import normalize_item
 from .output import DEFAULT_MAX_JSON_FILE_BYTES, write_public
+from .search_v4_stream import build_search_v4_stream
 from .sources import SOURCE_TYPES
 from .timeutil import utc_now_iso
 
@@ -255,6 +256,59 @@ def build_index(config_path: Path, *, offline: bool = False, strict: bool = Fals
     active_source_ids = {str(source.get("id")) for source in enabled_sources if source.get("id")}
     active_source_ids.update(str(item.source_id) for item in manual_items if item.source_id)
     suppressed_count = 0
+    output_options = settings.get("output", {}) or {}
+    v4_only = bool(output_options.get("v4_only"))
+    if catalog and v4_only:
+        catalog_item_count = catalog.count()
+        suppressed_count = catalog.count_suppressed(active_source_ids, suppressions)
+        fetched_item_count = raw_item_count
+        manifest = {
+            "name": settings.get("name", "JTorrent Torrent Aggregator Index"),
+            "generated_at": generated_at,
+            "base_url": settings.get("base_url"),
+            "custom_domain": settings.get("custom_domain"),
+            "frontend_origin": settings.get("frontend_origin"),
+            "raw_item_count": raw_item_count,
+            "fetched_item_count": fetched_item_count,
+            "catalog_item_count": catalog_item_count,
+            "suppressed_item_count": suppressed_count,
+            "enabled_source_count": len(enabled_sources),
+            "required_source_count": sum(1 for s in enabled_sources if _as_bool(s.get("required"), True)),
+            "optional_source_count": sum(1 for s in enabled_sources if not _as_bool(s.get("required"), True)),
+            "policy_scopes": settings.get("policy_scopes", {}),
+            "default_index_scope": settings.get("default_index_scope", "open-authorized"),
+            "warnings": warnings,
+            "errors": errors,
+            "source_allowlist_mode": "enabled-sources-only",
+            "_output_dir": str(Path(settings.get("output_dir", "public"))),
+        }
+        min_total = _as_int(limits.get("min_total_items"), 0)
+        try:
+            manifest = build_search_v4_stream(
+                catalog,
+                active_source_ids,
+                suppressions,
+                source_summaries,
+                manifest,
+                output_options,
+                minimum_items=min_total,
+                enforce_minimum=not offline,
+            )
+            catalog.record_run(generated_at, raw_item_count, catalog_item_count, suppressed_count)
+        finally:
+            catalog.close()
+        output_dir = Path(settings.get("output_dir", "public"))
+        print(f"Built {manifest.get('item_count', 0)} items into {output_dir} with the streaming v4-only contract")
+        if warnings:
+            print("Warnings:")
+            for warning in warnings:
+                print(f"- {warning}")
+        if errors:
+            print("Errors:")
+            for error in errors:
+                print(f"- {error}")
+        return manifest
+
     if catalog:
         items, suppressed_count = catalog.load_active(active_source_ids, suppressions)
         catalog_item_count = catalog.count()
@@ -304,7 +358,7 @@ def build_index(config_path: Path, *, offline: bool = False, strict: bool = Fals
 
     output_dir = Path(settings.get("output_dir", "public"))
     max_file_bytes = _as_int(limits.get("max_json_file_bytes"), DEFAULT_MAX_JSON_FILE_BYTES)
-    write_public(output_dir, items, source_summaries, manifest, max_file_bytes=max_file_bytes, output_options=settings.get("output", {}) or {})
+    write_public(output_dir, items, source_summaries, manifest, max_file_bytes=max_file_bytes, output_options=output_options)
     print(f"Built {len(items)} items into {output_dir}")
     if warnings:
         print("Warnings:")

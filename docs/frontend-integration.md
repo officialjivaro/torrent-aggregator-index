@@ -1,5 +1,7 @@
 # Frontend integration notes
 
+> Historical v3 integration note. Production clients must use `data/status.json`, `data/v4/current.json`, and the immutable v4 manifest described in `search-v4.md`; v3/v2 files are no longer published.
+
 The backend publishes static JSON through GitHub Pages. The frontend must not trigger GitHub Actions or download the whole corpus for each search.
 
 ## Preferred v3 flow

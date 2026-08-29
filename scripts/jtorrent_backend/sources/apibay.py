@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
+import time
 from typing import Any, Iterable
 from urllib.parse import quote, urlencode
 
@@ -170,8 +171,27 @@ class ApiBaySource(SourceAdapter):
                 return
 
             refresh_pages = max(1, int(self.source.get("uploader_refresh_pages", 3)))
-            for uploader in sorted(uploaders, key=str.lower):
+            ordered_uploaders = sorted(uploaders, key=str.lower)
+            cursor_key = "uploader-queue-cursor"
+            queue_cursor = store.get_checkpoint(self.source["id"], cursor_key) if store else None
+            if queue_cursor in ordered_uploaders:
+                offset = ordered_uploaders.index(queue_cursor) + 1
+                ordered_uploaders = ordered_uploaders[offset:] + ordered_uploaders[:offset]
+            defer_seconds = max(60, int(self.source.get("uploader_defer_seconds", 21_600)))
+            breaker_threshold = max(1, int(self.source.get("rate_limit_breaker_threshold", 1)))
+            persistent_deferrals = 0
+            for uploader in ordered_uploaders:
                 key = f"uploader:{uploader}"
+                defer_key = f"uploader-defer:{uploader}"
+                deferred_until = store.get_checkpoint(self.source["id"], defer_key, 0) if store else 0
+                try:
+                    deferred_until_value = float(deferred_until or 0)
+                except (TypeError, ValueError):
+                    deferred_until_value = 0
+                if deferred_until_value > time.time():
+                    if store:
+                        store.set_checkpoint(self.source["id"], cursor_key, uploader, self.fetched_at)
+                    continue
                 checkpoint = store.get_checkpoint(self.source["id"], key) if store else None
                 page = 0 if checkpoint in (None, -1) else max(0, int(checkpoint))
                 refresh_only = checkpoint == -1
@@ -194,11 +214,26 @@ class ApiBaySource(SourceAdapter):
                                 store.set_checkpoint(self.source["id"], key, -1, self.fetched_at)
                             break
                 except ApiBayRateLimitDeferred as exc:
-                    self.add_warning(f"uploader {uploader} deferred at page {page}; checkpoint preserved: {exc}")
-                    continue
+                    persistent_deferrals += 1
+                    if store:
+                        store.set_checkpoint(
+                            self.source["id"], defer_key, int(time.time()) + defer_seconds, self.fetched_at
+                        )
+                    self.add_warning(
+                        f"uploader {uploader} deferred at page {page} for {defer_seconds}s; "
+                        f"checkpoint preserved: {exc}"
+                    )
                 except Exception as exc:  # noqa: BLE001
                     self.add_warning(f"uploader {uploader} failed at page {page}; checkpoint preserved: {exc}")
-                    continue
+                finally:
+                    if store:
+                        store.set_checkpoint(self.source["id"], cursor_key, uploader, self.fetched_at)
+                if persistent_deferrals >= breaker_threshold:
+                    self.add_warning(
+                        f"uploader expansion stopped after {persistent_deferrals} persistent rate-limit deferral(s); "
+                        "the fair queue will resume with the next uploader on the next run"
+                    )
+                    break
         finally:
             if store:
                 store.close()

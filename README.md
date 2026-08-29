@@ -1,5 +1,24 @@
 # JTorrent Torrent Aggregator Index
 
+## One-time Pirate Bay historical import
+
+The verified 2012 Pirate Bay metadata snapshot is imported locally into the durable SQLite catalog. The importer downloads only the registered archive, verifies its exact size and SHA-1 checksum, reads only each torrent's `details.csv`, and does not retain descriptions, comments, or file lists. The process checkpoints every nested archive chunk, so an interruption can be resumed by running the same command again.
+
+Windows:
+
+```powershell
+.\import-history.cmd
+```
+
+Raspberry Pi OS / Linux (install `libarchive-tools` first):
+
+```bash
+chmod +x import-history.sh update-index.sh
+./import-history.sh
+```
+
+The first run creates `backups/catalog-pre-tpb-archive-2012-10-06.sqlite`, downloads the 1,211,496,851-byte source archive into ignored `historical-cache/`, and merges provenance without duplicating existing hashes. To test a single chunk, use `.\import-history.cmd -MaxChunks 1`. After the import finishes, run `.\update-index.cmd` (or `./update-index.sh`) to collect current sources, build the disk-backed v4-only search index, create the local/GitHub backup, and publish it to R2.
+
 This repository collects torrent metadata into a persistent local catalog, builds a versioned static search index, saves a GitHub Release backup, and publishes the live copy to Cloudflare R2 at `https://index.jtorrent.net`.
 
 Routine updates are manual and local. No GitHub Action runs on pushes or on a schedule. The repository workflow is retained as a manually triggered emergency GitHub Pages fallback only.
@@ -11,9 +30,9 @@ Routine updates are manual and local. No GitHub Action runs on pushes or on a sc
 3. `config/suppressions.yml` removes exact infohashes or URLs before public output is generated.
 4. Search v4 writes one immutable release under `data/v4/releases/<release-id>/`.
 5. `data/v4/current.json` is the small mutable pointer to that release.
-6. Search v3 and v2 remain published as compatibility fallbacks.
+6. The production build is v4-only; its disposable posting database keeps peak RAM bounded for multi-million-record catalogs.
 7. Backup ZIP assets are uploaded to a versioned GitHub Release.
-8. R2 receives immutable files first, mutable compatibility files next, and `current.json` last.
+8. R2 receives immutable files first, mutable metadata next, and `current.json` last.
 
 Cloudflare R2 is the serving origin. GitHub Releases and the local catalog/backups are recovery copies; Cloudflare does not need to pull the index from GitHub.
 
@@ -80,13 +99,13 @@ The root script performs these steps in order:
 
 1. creates `.venv` if needed and installs missing pinned dependencies;
 2. runs the Python tests and the fail-closed policy audit;
-3. collects enabled sources and builds v4 plus the v3/v2 fallbacks;
+3. collects enabled sources and builds the disk-backed v4-only contract;
 4. validates the generated index and governance contract locally;
 5. creates local backup bundles under `backups/<release-id>/`;
 6. creates or updates `index-<release-id>` in GitHub Releases;
 7. publishes to R2 and changes `data/v4/current.json` last.
 
-APIBay uploader expansion is deliberately paced at one request every two seconds. HTTP 429 responses use a run-wide 20-minute cooldown budget with 60-second, two-minute, five-minute, and ten-minute waits. An uploader that remains limited is deferred with its checkpoint unchanged while the remaining uploaders and cached top lists continue.
+APIBay uploader expansion is deliberately paced at one request every two seconds. HTTP 429 responses use a run-wide 20-minute cooldown budget with 60-second, two-minute, five-minute, and ten-minute waits. An uploader that remains limited is deferred for six hours with its page checkpoint unchanged. A circuit breaker then ends uploader expansion for that run; the durable fair-queue cursor starts the next run at the following uploader instead of repeatedly exhausting the budget on the same account.
 
 If GitHub backup creation fails, R2 is not changed. If R2 publishing fails, the previous R2 pointer remains live and the new local/GitHub backups remain available.
 
@@ -94,10 +113,10 @@ If GitHub backup creation fails, R2 is not changed. If R2 publishing fails, the 
 
 There are no arbitrary record-count caps on the two expanded collectors. Capacity is controlled by bytes and provider cost:
 
-- local SQLite soft limit: 16 GiB;
-- generated/R2 soft limit: 8 GiB;
+- local SQLite soft limit: 64 GiB;
+- generated/R2 soft limit: 64 GiB;
 - GitHub Release asset soft limit: 1.8 GiB per asset;
-- R2 v4 retention: latest three immutable releases;
+- R2 v4 retention: latest two immutable releases;
 - local backup retention: latest two releases;
 - GitHub Releases: not automatically deleted.
 
@@ -114,8 +133,6 @@ Crossing the SQLite limit rolls back the catalog merge. Crossing the R2 limit st
 /data/v4/releases/<release-id>/tokens/*.json
 /data/v4/releases/<release-id>/postings/**/*.json
 /data/v4/releases/<release-id>/docs/*.json
-/data/v3/manifest.json
-/data/v2/manifest.json
 ```
 
 Each v4 posting is:
@@ -139,7 +156,7 @@ For an accepted copyright or safety suppression, add the exact lowercase infohas
 ```powershell
 .\.venv\Scripts\python.exe -m pytest -q
 .\.venv\Scripts\python.exe scripts\build_index.py --config config\sources.yml --policy config\search-policy.json --offline
-.\.venv\Scripts\python.exe scripts\validate_v4_backend.py --public-dir public --minimum-items 1 --max-bytes 8589934592
+.\.venv\Scripts\python.exe scripts\validate_v4_backend.py --public-dir public --minimum-items 1 --max-bytes 68719476736
 ```
 
 Further details are in `docs/search-v4.md` and the adapter documentation under `docs/`.

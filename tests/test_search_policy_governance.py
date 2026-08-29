@@ -54,7 +54,8 @@ def policy() -> dict:
         "output": {
             "legacy_shards": False,
             "group_files": False,
-            "search_v3": {"enabled": True},
+            "v4_only": True,
+            "search_v3": {"enabled": False},
             "search_v4": {"enabled": True},
         },
         "governance": {

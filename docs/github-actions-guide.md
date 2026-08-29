@@ -1,5 +1,7 @@
 # GitHub Actions guide
 
+> Historical workflow note. The current workflow is manual-only (`workflow_dispatch`), has no push or schedule trigger, and builds the v4-only contract. Normal collection and R2 publishing run from the local root scripts.
+
 The backend workflow is:
 
 ```text

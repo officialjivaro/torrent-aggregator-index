@@ -1,5 +1,7 @@
 # Scaling JTorrent search
 
+> Historical design note. Production now uses the bounded-memory, R2-hosted v4-only architecture documented in `search-v4.md` and the repository README; the v3/Pages design below is retained only for migration history.
+
 The original browser-search design loaded every search shard before it could answer a query. That approach becomes expensive long before the corpus reaches millions of records because every visitor pays the bandwidth and memory cost of the entire index.
 
 ## Current static design: search v3

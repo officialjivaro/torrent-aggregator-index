@@ -5,7 +5,7 @@ Repository: `officialjivaro/torrent-aggregator-index`
 
 ## Final production contract
 
-The backend is a Python-generated static search index published to Cloudflare R2, with a local copy and a GitHub Release backup. Search contract v4 is primary; v3 remains the frontend fallback and the compact v2 surface reuses v3 document shards during the compatibility period.
+The backend is a Python-generated static search index published to Cloudflare R2, with a local copy and a GitHub Release backup. Production output uses only search contract v4. The builder uses a disposable disk-backed posting index so catalog growth does not require loading every record or token posting into RAM.
 
 The public build now fails closed when `config/search-policy.json` is missing, invalid, or inconsistent with `config/sources.yml`. Sources with uncertain collection-level authorization must remain explicitly policy-disabled. Required official/open sources cannot be policy-disabled.
 
@@ -19,13 +19,13 @@ The final audit validates:
 - HTTPS source and license URLs;
 - explicit exclusion of uncertain-rights sources;
 - exact policy-disabled source inventory;
-- v3 output enabled and retired duplicate output disabled;
+- v4-only output enabled and retired duplicate output disabled;
 - at least 30,000 generated items;
 - at least eight healthy sources, zero failed required sources, and at most two failed optional sources;
-- v4/v3/v2 manifest compatibility;
+- v4 pointer, manifest, posting, document-shard, and coverage consistency;
 - generated file references and byte counts;
 - no policy-disabled source in public source metadata;
-- an 8 GiB uncompressed artifact budget.
+- a 64 GiB uncompressed artifact budget.
 
 ## Commands
 
@@ -33,7 +33,7 @@ The final audit validates:
 python -m pytest -q
 python scripts/audit_governance.py --config config/sources.yml --policy config/search-policy.json
 python scripts/build_index.py --config config/sources.yml --policy config/search-policy.json
-python scripts/validate_v4_backend.py --public-dir public --minimum-items 30000 --max-bytes 8589934592
+python scripts/validate_v4_backend.py --public-dir public --minimum-items 30000 --max-bytes 68719476736
 python scripts/verify_final_phase.py --generated-dir public
 ```
 

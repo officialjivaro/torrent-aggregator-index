@@ -33,8 +33,6 @@ def main() -> int:
         public / "data/source-health.json",
         public / "data/manifest.json",
         public / "data/v4/current.json",
-        public / "data/v3/manifest.json",
-        public / "data/v2/manifest.json",
     ]
     for path in required:
         if not path.is_file():
@@ -43,7 +41,7 @@ def main() -> int:
         print("\n".join(errors), file=sys.stderr)
         return 1
 
-    status, root, current, v3, v2 = (read_json(required[index]) for index in [0, 2, 3, 4, 5])
+    status, root, current = (read_json(required[index]) for index in [0, 2, 3])
     manifest_path = public / str(current.get("manifest_path") or "")
     if not manifest_path.is_file():
         errors.append(f"Current pointer references a missing v4 manifest: {manifest_path}")
@@ -56,16 +54,14 @@ def main() -> int:
     if current.get("version") != 4 or v4.get("version") != 4: errors.append("v4 pointer or manifest has the wrong version")
     if current.get("release_id") != v4.get("release_id"): errors.append("v4 pointer and manifest release IDs differ")
     if status.get("search_manifest") != "data/v4/current.json": errors.append("status does not point to v4 current.json")
-    if status.get("fallback_manifest") != "data/v3/manifest.json": errors.append("status does not retain the v3 fallback")
+    if status.get("fallback_manifest"): errors.append("status unexpectedly advertises a legacy fallback")
     if int(v4.get("item_count", 0)) < args.minimum_items: errors.append(f"v4 item count is below {args.minimum_items}")
     if int(v4.get("item_count", 0)) != int(status.get("item_count", -1)): errors.append("status and v4 item counts differ")
     if v4.get("posting_format") != ["doc_id", "category_index", "source_index", "scope_index", "static_score"]: errors.append("v4 posting format is invalid")
     if v4.get("default_scope") != "open-authorized": errors.append("v4 default scope is not open-authorized")
     if "third-party-unverified" not in (v4.get("scope_definitions") or {}): errors.append("v4 scope definitions omit third-party-unverified")
-    if v3.get("version") != 3: errors.append("v3 fallback manifest is invalid")
-    if v2.get("version") != 2: errors.append("v2 compatibility manifest is invalid")
 
-    entries = [*v4.get("doc_shards", []), *v4.get("token_buckets", []), *v3.get("doc_shards", []), *v3.get("token_buckets", [])]
+    entries = [*v4.get("doc_shards", []), *v4.get("token_buckets", [])]
     for entry in entries:
         path = public / str(entry.get("path") or "")
         if not path.is_file(): errors.append(f"Manifest references a missing file: {path}")
@@ -91,7 +87,7 @@ def main() -> int:
     if errors:
         print("\n".join(f"ERROR: {message}" for message in errors), file=sys.stderr)
         return 1
-    print(f"v4 backend validated: {v4['item_count']:,} items, {len(v4.get('doc_shards', []))} document shards, {len(v4.get('token_buckets', []))} token-bucket parts, {total_bytes:,} bytes, and v3 fallback.")
+    print(f"v4-only backend validated: {v4['item_count']:,} items, {len(v4.get('doc_shards', []))} document shards, {len(v4.get('token_buckets', []))} token-bucket parts, and {total_bytes:,} bytes.")
     return 0
 
 

@@ -1,5 +1,7 @@
 # JTorrent search contract v3
 
+> Historical reference only. Production output is v4-only and no longer publishes this compatibility contract.
+
 The public backend now publishes a compact v3 static search index while retaining a lightweight v2 compatibility surface for the currently deployed frontend.
 
 ## Public endpoints

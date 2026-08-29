@@ -62,7 +62,7 @@ jobs:
           python scripts/validate_v4_backend.py \
             --public-dir public \
             --minimum-items 30000 \
-            --max-bytes 8589934592
+            --max-bytes 68719476736
           python - <<'PY'
           import json
           from pathlib import Path
@@ -98,8 +98,6 @@ jobs:
             public/data/source-health.json
             public/data/manifest.json
             public/data/v4/current.json
-            public/data/v3/manifest.json
-            public/data/v2/manifest.json
             public/data/sources.json
           if-no-files-found: error
           retention-days: 30

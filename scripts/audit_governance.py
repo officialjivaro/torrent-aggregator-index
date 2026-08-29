@@ -31,8 +31,6 @@ def generated_audit(public: Path, policy: dict[str, Any]) -> tuple[dict[str, Any
         "health": public / "data/source-health.json",
         "root_manifest": public / "data/manifest.json",
         "v4_current": public / "data/v4/current.json",
-        "v3": public / "data/v3/manifest.json",
-        "v2": public / "data/v2/manifest.json",
         "sources": public / "data/sources.json",
     }
     for label, path in required.items():
@@ -49,8 +47,6 @@ def generated_audit(public: Path, policy: dict[str, Any]) -> tuple[dict[str, Any
     if not v4_path.is_file():
         return {}, [f"Missing generated v4 release manifest: {v4_path}"]
     v4 = read_json(v4_path)
-    v3 = read_json(required["v3"])
-    v2 = read_json(required["v2"])
     public_sources = read_json(required["sources"])
     governance = policy.get("governance") or {}
     disabled = policy.get("disabledSources") or {}
@@ -71,10 +67,6 @@ def generated_audit(public: Path, policy: dict[str, Any]) -> tuple[dict[str, Any
     if v4.get("version") != 4: errors.append("v4 manifest has the wrong version.")
     if v4.get("posting_format") != ["doc_id", "category_index", "source_index", "scope_index", "static_score"]: errors.append("v4 posting format is invalid.")
     if v4.get("default_scope") != "open-authorized": errors.append("v4 default search scope is invalid.")
-    if v3.get("version") != 3: errors.append("v3 manifest has the wrong version.")
-    if v2.get("version") != 2 or v2.get("type") != "v3-compatibility-token-index": errors.append("v2 compatibility manifest is invalid.")
-    if v2.get("doc_shards") != v3.get("doc_shards"): errors.append("v2 does not reuse the compact v3 document shards.")
-    if v3.get("posting_format") != ["doc_id", "category_index", "source_index", "static_score"]: errors.append("v3 posting format is invalid.")
 
     health_disabled = sorted(str(item.get("id")) for item in health.get("disabled_sources", []) if item.get("id"))
     if health_disabled != disabled_ids: errors.append("Generated disabled-source inventory differs from policy.")
@@ -112,7 +104,7 @@ def generated_audit(public: Path, policy: dict[str, Any]) -> tuple[dict[str, Any
     total_bytes = size_tree(public)
     if total_bytes > maximum_bytes: errors.append(f"Backend artifact is {total_bytes:,} bytes; budget is {maximum_bytes:,}.")
 
-    for entry in [*v4.get("doc_shards", []), *v4.get("token_buckets", []), *v3.get("doc_shards", []), *v3.get("token_buckets", []), *v2.get("token_buckets", [])]:
+    for entry in [*v4.get("doc_shards", []), *v4.get("token_buckets", [])]:
         relative = str(entry.get("path") or "")
         path = public / relative
         if not relative or not path.is_file(): errors.append(f"Manifest references missing file: {relative!r}")
@@ -127,11 +119,11 @@ def generated_audit(public: Path, policy: dict[str, Any]) -> tuple[dict[str, Any
         "disabled_source_count": len(disabled_ids),
         "document_shards": len(v4.get("doc_shards", [])),
         "v4_token_bucket_parts": len(v4.get("token_buckets", [])),
-        "v3_token_buckets": len(v3.get("token_buckets", [])),
-        "v2_token_buckets": len(v2.get("token_buckets", [])),
+        "v3_token_buckets": 0,
+        "v2_token_buckets": 0,
         "artifact_bytes": total_bytes,
         "search_contract": status.get("search_contract"),
-        "v2_compatibility": True,
+        "v2_compatibility": False,
     }, errors
 
 

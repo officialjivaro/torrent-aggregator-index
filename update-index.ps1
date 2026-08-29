@@ -77,7 +77,7 @@ if ($Offline) { $buildArguments += "--offline" }
 if ($LASTEXITCODE -ne 0) { throw "Index build failed; nothing was published." }
 
 $minimumItems = if ($Offline) { 1 } else { 30000 }
-& $python scripts/validate_v4_backend.py --public-dir public --minimum-items $minimumItems --max-bytes 8589934592
+& $python scripts/validate_v4_backend.py --public-dir public --minimum-items $minimumItems --max-bytes 68719476736
 if ($LASTEXITCODE -ne 0) { throw "Generated v4 index validation failed; nothing was published." }
 if ($Offline) {
     & $python scripts/verify_final_phase.py --output artifacts/backend-final-verification.json
