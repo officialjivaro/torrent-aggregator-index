@@ -10,6 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from jtorrent_backend.search_v3 import tokenize  # noqa: E402
+from jtorrent_backend.search_integrity import validate_scopes  # noqa: E402
 
 
 def read_json(path: Path):
@@ -60,6 +61,11 @@ def main() -> int:
     if v4.get("posting_format") != ["doc_id", "category_index", "source_index", "scope_index", "static_score"]: errors.append("v4 posting format is invalid")
     if v4.get("default_scope") != "open-authorized": errors.append("v4 default scope is not open-authorized")
     if "third-party-unverified" not in (v4.get("scope_definitions") or {}): errors.append("v4 scope definitions omit third-party-unverified")
+    try:
+        policy = read_json(ROOT / 'config/search-policy.json')
+        validate_scopes(public, v4, root, status, policy.get('sourceScopes'))
+    except (ValueError, KeyError, TypeError, OSError) as exc:
+        errors.append(f"Scope integrity: {exc}")
 
     entries = [*v4.get("doc_shards", []), *v4.get("token_buckets", [])]
     for entry in entries:

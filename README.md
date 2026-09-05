@@ -1,5 +1,13 @@
 # JTorrent Torrent Aggregator Index
 
+## Safe catalog-only release repair
+
+`python scripts/rebuild_catalog_release.py` creates a consistent SQLite backup under a fresh `staging/catalog-release-*` directory and rebuilds only that snapshot. It does not collect sources or modify `state/catalog.sqlite` or existing `public/`. It verifies the live baseline against the current source policy and catalog counts, restores only explicitly configured manual-item scopes in the clone, retains original source-health observations, and runs artifact and governance validation. A mismatch stops publication. The resulting path is printed; use it as `--public-dir` with the existing backup and R2 commands after review.
+
+`validate_v4_backend.py` cross-checks every document and posting classification and reconciles scope totals. Missing/unknown scopes fail closed. R2 publication repeats validation, checks capacity without deleting the serving release, rejects immutable collisions, saves prior mutable metadata under `backups/rollback/`, uploads and verifies immutable data first, and activates `current.json` last. Old active data is retained even if its release ID is not the newest by sort order. Interrupted pre-activation metadata writes are restored; ambiguous activation stops without pruning. Keep the local rollback snapshot and GitHub backup with the release record. Serialize publishers: do not run concurrent updates.
+
+For a repaired release, create a new GitHub backup release from the prepared bundles before invoking `publish_release.py r2`. Never overwrite an existing immutable release or reuse its ID. Index regeneration is not a fresh source-health check.
+
 ## One-time Pirate Bay historical import
 
 The verified 2012 Pirate Bay metadata snapshot is imported locally into the durable SQLite catalog. The importer downloads only the registered archive, verifies its exact size and SHA-1 checksum, reads only each torrent's `details.csv`, and does not retain descriptions, comments, or file lists. The process checkpoints every nested archive chunk, so an interruption can be resumed by running the same command again.

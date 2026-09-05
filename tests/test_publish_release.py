@@ -1,96 +1,118 @@
 from __future__ import annotations
-
+import base64
+import io
 import json
 from pathlib import Path
-
+import pytest
+from botocore.exceptions import ClientError
 import scripts.publish_release as publisher
 
+POINTER = 'data/v4/current.json'
+OLD = 'data/v4/releases/v4-old/manifest.json'
+NEW = 'data/v4/releases/v4-test/manifest.json'
 
 class FakeR2Client:
-    def __init__(self, objects: dict[str, int] | None = None) -> None:
+    def __init__(self):
+        self.objects = {POINTER: b'{"release_id":"v4-old"}', OLD: b'{}', 'data/status.json': b'{"old":true}',
+                        'data/v4/releases/v4-previous/manifest.json': b'{}'}
+        self.metadata = {}
+        self.uploads, self.deleted = [], []
+        self.fail_key, self.corrupt_key = None, None
         self.cors_calls = 0
-        self.uploads: list[str] = []
-        self.objects = dict(objects or {})
-        self.deleted: list[str] = []
-
-    def list_objects_v2(self, **_kwargs):
-        return {
-            "Contents": [{"Key": key, "Size": size} for key, size in sorted(self.objects.items())],
-            "IsTruncated": False,
-        }
-
-    def put_bucket_cors(self, **_kwargs) -> None:
-        self.cors_calls += 1
-
-    def upload_file(self, path: str, _bucket: str, key: str, **_kwargs) -> None:
+    def list_objects_v2(self, **kwargs):
+        return {'Contents': [{'Key': key, 'Size': len(data)} for key,data in self.objects.items()], 'IsTruncated': False}
+    def get_object(self, Bucket, Key):
+        if Key not in self.objects:
+            raise ClientError({'Error': {'Code': 'NoSuchKey'}}, 'GetObject')
+        return {'Body': io.BytesIO(self.objects[Key])}
+    def head_object(self, Bucket, Key):
+        return {'ContentLength': len(self.objects[Key]) + (1 if Key == self.corrupt_key else 0), 'Metadata': self.metadata.get(Key, {})}
+    def upload_file(self, path, bucket, key, ExtraArgs):
         self.uploads.append(key)
-        self.objects[key] = Path(path).stat().st_size
-
-    def delete_objects(self, **kwargs) -> None:
-        for item in kwargs["Delete"]["Objects"]:
-            key = item["Key"]
+        if key == self.fail_key:
+            raise OSError('Interrupted upload')
+        self.objects[key] = Path(path).read_bytes()
+        self.metadata[key] = ExtraArgs.get('Metadata', {})
+    def put_object(self, Bucket, Key, Body, **kwargs):
+        self.objects[Key] = Body
+    def delete_objects(self, **kwargs):
+        for row in kwargs['Delete']['Objects']:
+            key = row['Key']
             self.deleted.append(key)
             self.objects.pop(key, None)
+    def put_bucket_cors(self, **kwargs):
+        self.cors_calls += 1
 
-
-def public_fixture(tmp_path: Path) -> Path:
-    public = tmp_path / "public"
-    pointer = public / "data" / "v4" / "current.json"
-    pointer.parent.mkdir(parents=True)
-    pointer.write_text(json.dumps({"release_id": "v4-test"}), encoding="utf-8")
-    release = public / "data" / "v4" / "releases" / "v4-test" / "manifest.json"
-    release.parent.mkdir(parents=True)
-    release.write_text("{}", encoding="utf-8")
-    return public
-
-
-def run_publish(monkeypatch, tmp_path: Path, *, manage_cors: bool) -> FakeR2Client:
+@pytest.fixture
+def release(monkeypatch, tmp_path):
+    public = tmp_path / 'public'
+    for key, data in {POINTER: {'release_id': 'v4-test'}, NEW: {}, 'data/status.json': {'new': True}}.items():
+        path = public / key
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(data), encoding='utf-8')
     fake = FakeR2Client()
-    monkeypatch.setattr(publisher, "r2_client", lambda: fake)
-    monkeypatch.setattr(
-        publisher,
-        "load_settings",
-        lambda: {"publishing": {
-            "r2_bucket": "torrent-aggregator-index",
-            "r2_manage_cors": manage_cors,
-            "r2_soft_limit_bytes": 1024 * 1024,
-            "keep_r2_versions": 3,
-        }},
-    )
-    publisher.publish_r2(public_fixture(tmp_path))
-    return fake
+    settings = {'publishing': {'r2_bucket': 'torrent-aggregator-index', 'r2_soft_limit_bytes': 1024**2, 'keep_r2_versions': 2}}
+    monkeypatch.setattr(publisher, 'ROOT', tmp_path)
+    monkeypatch.setattr(publisher, 'r2_client', lambda: fake)
+    monkeypatch.setattr(publisher, 'load_settings', lambda: settings)
+    # Full contract coverage lives in test_search_integrity and the streaming test.
+    monkeypatch.setattr(publisher, 'validate_candidate', lambda public: None)
+    return public, fake, settings
 
-
-def test_r2_publish_skips_cors_for_object_scoped_credentials(monkeypatch, tmp_path: Path) -> None:
-    fake = run_publish(monkeypatch, tmp_path, manage_cors=False)
+def test_publish_keeps_active_release_and_saves_rollback(release):
+    public, fake, _ = release
+    previous = fake.objects[POINTER]
+    result = publisher.publish_r2(public)
+    assert fake.uploads[-1] == POINTER
+    assert OLD in fake.objects and NEW in fake.objects
+    assert fake.deleted == ['data/v4/releases/v4-previous/manifest.json']
     assert fake.cors_calls == 0
-    assert fake.uploads[-1] == "data/v4/current.json"
+    snapshot = json.loads(Path(result['rollback_snapshot']).read_text())
+    assert base64.b64decode(snapshot['files'][POINTER]) == previous
 
+def test_capacity_failure_never_deletes_or_uploads(release):
+    public, fake, settings = release
+    settings['publishing']['r2_soft_limit_bytes'] = 1
+    with pytest.raises(RuntimeError, match='nothing changed'):
+        publisher.publish_r2(public)
+    assert not fake.deleted and not fake.uploads
 
-def test_r2_publish_can_manage_cors_when_explicitly_enabled(monkeypatch, tmp_path: Path) -> None:
-    fake = run_publish(monkeypatch, tmp_path, manage_cors=True)
+def test_immutable_collision_is_rejected_before_any_upload(release):
+    public, fake, _ = release
+    fake.objects[NEW] = b'changed'
+    with pytest.raises(RuntimeError, match='immutable'):
+        publisher.publish_r2(public)
+    assert not fake.uploads and not fake.deleted
+
+@pytest.mark.parametrize('key', [NEW, 'data/status.json', POINTER])
+def test_interrupted_upload_preserves_old_release_and_metadata(release, key):
+    public, fake, _ = release
+    before = fake.objects.copy()
+    fake.fail_key = key
+    with pytest.raises(OSError):
+        publisher.publish_r2(public)
+    assert all(fake.objects[k] == value for k, value in before.items())
+    assert not fake.deleted
+
+def test_verification_failure_never_changes_pointer(release):
+    public, fake, _ = release
+    before = fake.objects[POINTER]
+    fake.corrupt_key = NEW
+    with pytest.raises(RuntimeError, match='verification'):
+        publisher.publish_r2(public)
+    assert fake.objects[POINTER] == before and not fake.deleted
+
+def test_explicit_cors_configuration_is_preserved(release):
+    public, fake, settings = release
+    settings['publishing']['r2_manage_cors'] = True
+    publisher.publish_r2(public)
     assert fake.cors_calls == 1
 
-
-def test_r2_retention_keeps_current_and_one_previous_release(monkeypatch, tmp_path: Path) -> None:
-    fake = FakeR2Client({
-        "data/v4/releases/v4-old-1/manifest.json": 2,
-        "data/v4/releases/v4-old-2/manifest.json": 2,
-    })
-    monkeypatch.setattr(publisher, "r2_client", lambda: fake)
-    monkeypatch.setattr(
-        publisher,
-        "load_settings",
-        lambda: {"publishing": {
-            "r2_bucket": "torrent-aggregator-index",
-            "r2_manage_cors": False,
-            "r2_soft_limit_bytes": 1024 * 1024,
-            "keep_r2_versions": 2,
-        }},
-    )
-    publisher.publish_r2(public_fixture(tmp_path))
-    release_ids = {
-        key.split("/")[3] for key in fake.objects
-        if key.startswith("data/v4/releases/")
-    }
-    assert release_ids == {"v4-old-2", "v4-test"}
+def test_invalid_candidate_has_no_remote_effects(release, monkeypatch):
+    public, fake, _ = release
+    def reject(_):
+        raise ValueError('Invalid candidate')
+    monkeypatch.setattr(publisher, 'validate_candidate', reject)
+    with pytest.raises(ValueError):
+        publisher.publish_r2(public)
+    assert not fake.deleted and not fake.uploads

@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from .search_v3 import STOPWORDS, _as_int, _bucket, _read_json, _token_scores_for_doc, _write_json
+from .search_integrity import required_scope
 
 
 DEFAULT_DOC_SHARD_BYTES = 256 * 1024
@@ -174,7 +175,7 @@ def build_search_v4(public_dir: Path, output_options: dict[str, Any] | None = No
     docs = _load_v3_docs(public_dir)
     categories = sorted({str(doc.get("category")) for doc in docs if doc.get("category")})
     sources = sorted({str(doc.get("source_id")) for doc in docs if doc.get("source_id")})
-    scopes = sorted({str(doc.get("policy_scope") or "open-authorized") for doc in docs})
+    scopes = sorted({required_scope(doc.get("policy_scope")) for doc in docs})
     category_map = {value: index for index, value in enumerate(categories)}
     source_map = {value: index for index, value in enumerate(sources)}
     scope_map = {value: index for index, value in enumerate(scopes)}
@@ -184,7 +185,7 @@ def build_search_v4(public_dir: Path, output_options: dict[str, Any] | None = No
         doc_id = int(doc["doc_id"])
         category_index = category_map.get(str(doc.get("category")), -1)
         source_index = source_map.get(str(doc.get("source_id")), -1)
-        scope_index = scope_map.get(str(doc.get("policy_scope") or "open-authorized"), -1)
+        scope_index = scope_map[required_scope(doc.get("policy_scope"))]
         for token, score in _token_scores_for_doc(doc, max_index_tokens).items():
             postings[token].append([doc_id, category_index, source_index, scope_index, score])
 

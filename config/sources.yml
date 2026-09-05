@@ -506,6 +506,7 @@ manual_items:
 - title: Arch Linux latest ISO torrent
   category: linux
   source_id: arch_manual_latest
+  policy_scope: open-authorized
   source_name: Official Arch Linux Downloads
   source_url: https://archlinux.org/download/
   torrent_url: https://geo.mirror.pkgbuild.com/iso/latest/archlinux-x86_64.iso.torrent

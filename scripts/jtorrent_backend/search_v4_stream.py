@@ -12,6 +12,7 @@ from typing import Any, Iterable
 from .catalog import CatalogStore, Suppressions
 from .models import TorrentItem
 from .search_v3 import STOPWORDS, _bucket, _compact_doc, _source_health, _token_scores_for_doc, _write_json
+from .search_integrity import required_scope
 from .search_v4 import _release_id
 
 
@@ -122,7 +123,7 @@ def _first_pass(
         item_count += 1
         categories[item.category or "uncategorized"] += 1
         sources[item.source_id or "unknown"] += 1
-        scopes[item.policy_scope or "open-authorized"] += 1
+        scopes[required_scope(item.policy_scope)] += 1
     return item_count, categories, sources, scopes
 
 
@@ -191,7 +192,7 @@ def _build_documents_and_postings(
 
             category_index = category_map.get(str(item.category or "uncategorized"), -1)
             source_index = source_map.get(str(item.source_id or "unknown"), -1)
-            scope_index = scope_map.get(str(item.policy_scope or "open-authorized"), -1)
+            scope_index = scope_map[required_scope(item.policy_scope)]
             for token, score in _token_scores_for_doc(doc, max_index_tokens).items():
                 posting_rows.append((
                     _bucket(token, prefix_chars), token, doc_id,
