@@ -86,6 +86,11 @@ if ($Offline) {
 }
 if ($LASTEXITCODE -ne 0) { throw "Final governance verification failed; nothing was published." }
 
+if (-not $Offline -and -not $SkipR2) {
+    & $python scripts/publish_gate.py --public-dir public --report artifacts/publish-gate.json
+    if ($LASTEXITCODE -ne 0) { throw "Publish gate refused this build (see artifacts/publish-gate.json); nothing was published." }
+}
+
 & $python scripts/publish_release.py prepare --public-dir public --backup-dir backups --manifest staging/release.json
 if ($LASTEXITCODE -ne 0) { throw "Local backup preparation failed; nothing was published." }
 $release = Get-Content -LiteralPath staging/release.json -Raw | ConvertFrom-Json

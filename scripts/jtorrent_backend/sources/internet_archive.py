@@ -12,6 +12,9 @@ from .base import SourceAdapter
 
 class InternetArchiveAdvancedSearchSource(SourceAdapter):
     API = "https://archive.org/advancedsearch.php"
+    # advancedsearch refuses page*rows beyond 10,000 results; the Scrape API
+    # walks a whole query with a cursor, so large collections need `api: scrape`.
+    SCRAPE_API = "https://archive.org/services/search/v1/scrape"
 
     def _int(self, key: str, default: int) -> int:
         return _as_int(self.source.get(key), default)
@@ -38,6 +41,39 @@ class InternetArchiveAdvancedSearchSource(SourceAdapter):
         for field in fields:
             params.append(("fl[]", field))
         return f"{self.API}?{urlencode(params)}"
+
+    def _scrape_url(self, *, query: str, count: int, cursor: str | None, fields: list[str]) -> str:
+        params: list[tuple[str, str | int]] = [("q", query), ("fields", ",".join(fields)), ("count", count)]
+        sorts = self._sorts()
+        if sorts:
+            params.append(("sorts", ",".join(sorts)))
+        if cursor:
+            params.append(("cursor", cursor))
+        return f"{self.SCRAPE_API}?{urlencode(params)}"
+
+    def _fetch_scrape(self, *, query: str, max_items: int, include_torrent: bool, fields: list[str]) -> Iterable[TorrentItem]:
+        # The Scrape API accepts 100-10,000 results per request.
+        count = max(100, min(self._int("rows", 10000), 10000))
+        cursor: str | None = None
+        produced = 0
+        while True:
+            data = self.http.get(self._scrape_url(query=query, count=count, cursor=cursor, fields=fields)).json()
+            docs = data.get("items", [])
+            if not isinstance(docs, list) or not docs:
+                return
+            for doc in docs:
+                if not isinstance(doc, dict):
+                    continue
+                item = self._item_from_doc(doc, include_torrent=include_torrent)
+                if item is None:
+                    continue
+                yield item
+                produced += 1
+                if max_items and produced >= max_items:
+                    return
+            cursor = scalar_text(data.get("cursor")) or None
+            if not cursor:
+                return
 
     def _item_from_doc(self, doc: dict[str, Any], *, include_torrent: bool) -> TorrentItem | None:
         identifier = first_scalar_text(doc.get("identifier"))
@@ -100,6 +136,10 @@ class InternetArchiveAdvancedSearchSource(SourceAdapter):
             "downloads",
             "item_size",
         ]
+        if scalar_text(self.source.get("api")) == "scrape":
+            yield from self._fetch_scrape(query=scalar_text(query), max_items=max_items, include_torrent=include_torrent, fields=fields)
+            return
+
         produced = 0
 
         for page in range(start_page, start_page + max_pages):
