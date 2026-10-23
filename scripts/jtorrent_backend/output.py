@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import re
-import shutil
 import unicodedata
 from array import array
 from pathlib import Path
@@ -10,6 +9,7 @@ from typing import Any
 
 from .models import TorrentItem
 from .normalize import scalar_text, slugify
+from .fsutil import remove_tree
 
 DEFAULT_MAX_JSON_FILE_BYTES = 5 * 1024 * 1024
 DEFAULT_LEGACY_MAX_ITEMS = 100_000
@@ -654,7 +654,7 @@ def write_public(
     output_options: dict[str, Any] | None = None,
 ) -> None:
     if output_dir.exists():
-        shutil.rmtree(output_dir)
+        remove_tree(output_dir)
     (output_dir / "data").mkdir(parents=True, exist_ok=True)
     (output_dir / ".nojekyll").write_text("", encoding="utf-8")
 

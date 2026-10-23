@@ -14,6 +14,7 @@ from .models import TorrentItem
 from .search_v3 import STOPWORDS, _bucket, _compact_doc, _source_health, _token_scores_for_doc, _write_json
 from .search_integrity import required_scope
 from .search_v4 import _release_id
+from .fsutil import remove_tree
 
 
 DEFAULT_DOC_SHARD_BYTES = 256 * 1024
@@ -378,7 +379,7 @@ def build_search_v4_stream(
         )
 
     if public_dir.exists():
-        shutil.rmtree(public_dir)
+        remove_tree(public_dir)
     (public_dir / "data").mkdir(parents=True, exist_ok=True)
     (public_dir / ".nojekyll").write_text("", encoding="utf-8")
     release_root = public_dir / release_relative
